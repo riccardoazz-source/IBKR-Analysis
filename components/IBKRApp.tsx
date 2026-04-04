@@ -48,6 +48,7 @@ export default function IBKRApp() {
 
   // Load portfolio list from Supabase
   const loadPortfolios = useCallback(async () => {
+    if (!supabase) return;
     try {
       const { data: rows, error } = await supabase
         .from("ibkr_portfolios")
@@ -61,6 +62,7 @@ export default function IBKRApp() {
 
   // Load a specific portfolio XML from Supabase
   const loadPortfolioById = useCallback(async (id: string) => {
+    if (!supabase) return;
     try {
       const { data: row, error } = await supabase
         .from("ibkr_portfolios")
@@ -107,6 +109,7 @@ export default function IBKRApp() {
         to_date: parsed.account.toDate,
         nav_ending: parsed.nav.endingValue,
       };
+      if (!supabase) throw new Error("Supabase not configured — check environment variables.");
       const { data: row, error } = await supabase
         .from("ibkr_portfolios")
         .insert(payload)
@@ -125,7 +128,7 @@ export default function IBKRApp() {
 
   const deletePortfolio = async (id: string) => {
     if (!confirm("Delete this portfolio?")) return;
-    await supabase.from("ibkr_portfolios").delete().eq("id", id);
+    if (supabase) await supabase.from("ibkr_portfolios").delete().eq("id", id);
     if (activePortfolioId === id) {
       setData(null);
       setActivePortfolioId(null);
