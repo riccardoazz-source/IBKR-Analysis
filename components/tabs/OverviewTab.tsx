@@ -9,7 +9,7 @@ import { COLORS } from "@/lib/constants";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData, Benchmarks } from "@/lib/types";
 
-export default function OverviewTab({ data, benchmarks }: { data: ParsedData; benchmarks: Benchmarks | null }) {
+export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: Benchmarks | null }) {
   const { positions, nav, account, dividends, deposits, dailyNav, transfers } = data;
   const startV = (nav.startingValue || 0) + (nav.assetTransfers || 0);
 
@@ -46,7 +46,7 @@ export default function OverviewTab({ data, benchmarks }: { data: ParsedData; be
         <Stat label={`LTV · ${marginEUR > 0 ? "⚠ leverage" : "no debt"}`} value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossLong / nav.endingValue : null, 2) + "x" : "—"} color={marginEUR > 0 ? "#d97706" : "#16a34a"} sub={marginEUR > 0 ? `~${fmtCcy(marginEUR, account.currency)} margin debt` : "no leverage"} />
       </div>
 
-      <PortfolioChart data={data} benchmarks={benchmarks} />
+      <PortfolioChart data={data} />
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
         <div className="card">

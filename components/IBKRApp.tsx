@@ -200,26 +200,66 @@ export default function IBKRApp() {
   );
 
   if (!data) return (
-    <>
+    <div style={{ background: "#f8f9fa", minHeight: "100vh" }}>
       <style>{CSS}</style>
       <input ref={uploadRef} type="file" accept=".xml" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
-      <DropZone onLoad={(parsed, fn, xml) => { setData(parsed); setFileName(fn); setBenchmarks(null); setPendingXml({ xml, fileName: fn, parsed }); setPortfolioName(parsed.account.alias || parsed.account.name || fn.replace(".xml", "")); setShowNameModal(true); }} />
-      {/* Portfolio selector on empty state if portfolios exist */}
-      {portfolios.length > 0 && (
-        <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, boxShadow: "0 4px 24px rgba(0,0,0,.1)", width: 420, maxWidth: "90vw", zIndex: 200 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 10 }}>OR LOAD A SAVED PORTFOLIO</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-            {portfolios.map((p) => (
-              <button key={p.id} onClick={() => { loadPortfolioById(p.id); localStorage.setItem("ibkr_last_portfolio", p.id); }} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{p.account_alias || p.account_id} · {p.from_date} → {p.to_date} · NAV {fmtCcy(p.nav_ending ?? 0, p.account_currency ?? "EUR")}</div>
-              </button>
-            ))}
+
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "48px 24px" }}>
+        {/* Title */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 28, fontWeight: 700, color: "#111827", marginBottom: 4 }}>IBKR Monitor</div>
+          <div style={{ fontSize: 13, color: "#6b7280" }}>Interactive Brokers · data stays in your browser</div>
+        </div>
+
+        {/* Upload zone */}
+        <div
+          className="card"
+          style={{ border: "2px dashed #d1d5db", cursor: "pointer", marginBottom: 24, textAlign: "center" }}
+          onClick={() => uploadRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); e.dataTransfer.files[0] && handleFile(e.dataTransfer.files[0]); }}
+        >
+          <div style={{ padding: "28px 0" }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
+            <div style={{ fontSize: 14, color: "#374151", marginBottom: 6, fontWeight: 500 }}>Drop Flex XML here · or click to browse</div>
+            <div style={{ fontSize: 12, color: "#9ca3af" }}>Requires: Open Positions · Cash Transactions · Trades · Change in NAV</div>
           </div>
         </div>
-      )}
+
+        {/* Saved portfolios */}
+        {portfolios.length > 0 && (
+          <div className="card">
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 }}>
+              Saved portfolios — click to load
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {portfolios.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+                  <button
+                    onClick={() => { loadPortfolioById(p.id); localStorage.setItem("ibkr_last_portfolio", p.id); }}
+                    style={{ flex: 1, background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit", padding: 0 }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 3 }}>
+                      {p.account_currency} · {p.from_date} → {p.to_date}
+                      {p.nav_ending != null && ` · NAV ${fmtCcy(p.nav_ending, p.account_currency ?? "EUR")}`}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => deletePortfolio(p.id)}
+                    style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", color: "#dc2626", fontSize: 12, padding: "4px 10px", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       {showNameModal && pendingXml && <NameModal name={portfolioName} setName={setPortfolioName} onConfirm={confirmSave} onSkip={skipSave} saving={saving} error={saveError} />}
-    </>
+    </div>
   );
 
   const pnlTotal = data.positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
@@ -275,7 +315,7 @@ export default function IBKRApp() {
                     {p.nav_ending != null && ` · ${fmtCcy(p.nav_ending, p.account_currency ?? "EUR")}`}
                   </div>
                 </button>
-                <button onClick={() => deletePortfolio(p.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", fontSize: 16, padding: "2px 4px", lineHeight: 1 }} title="Delete">×</button>
+                <button onClick={() => deletePortfolio(p.id)} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", color: "#dc2626", fontSize: 11, padding: "3px 8px", fontFamily: "inherit", fontWeight: 600 }}>Delete</button>
               </div>
             ))}
           </div>

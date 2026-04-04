@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, ReferenceLine } from "recharts";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtNum, fmtDate, fmtMY } from "@/lib/formatters";
 import { COLORS } from "@/lib/constants";
@@ -135,8 +135,61 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                       <span style={{ color: "#9ca3af", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
                     </div>
                   </div>
-                  {isOpen && (
+                  {isOpen && (() => {
+                    const sortedDivs = [...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || ""));
+                    const perShareSeries = sortedDivs.map((d) => {
+                      const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
+                      const perShare = psMatch ? parseFloat(psMatch[1]) : null;
+                      return {
+                        label: fmtDate(d.date || parseIBDate(d.dateTime)) ?? "",
+                        perShare,
+                        currency: d.currency,
+                      };
+                    }).filter((r) => r.perShare != null);
+                    const hasPerShare = perShareSeries.length >= 1;
+                    const avgPerShare = hasPerShare
+                      ? perShareSeries.reduce((s, r) => s + (r.perShare ?? 0), 0) / perShareSeries.length
+                      : null;
+
+                    return (
                     <div style={{ borderTop: "1px solid #f3f4f6" }}>
+
+                      {/* Per-share sparkline */}
+                      {hasPerShare && (
+                        <div style={{ padding: "14px 16px 0" }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                            Dividend per share over time ({perShareSeries[0].currency}/share)
+                          </div>
+                          <ResponsiveContainer width="100%" height={110}>
+                            <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                              <YAxis
+                                tick={{ fontSize: 9, fill: "#9ca3af" }}
+                                axisLine={false}
+                                tickLine={false}
+                                width={42}
+                                tickFormatter={(v: number) => v.toFixed(4)}
+                                domain={["auto", "auto"]}
+                              />
+                              <Tooltip
+                                contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
+                                formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]}
+                              />
+                              {avgPerShare != null && (
+                                <ReferenceLine
+                                  y={avgPerShare}
+                                  stroke="#d1d5db"
+                                  strokeDasharray="4 3"
+                                  label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }}
+                                />
+                              )}
+                              <Line type="monotone" dataKey="perShare" stroke="#16a34a" strokeWidth={2} dot={{ r: 4, fill: "#16a34a", strokeWidth: 0 }} connectNulls name="perShare" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+
                       <table>
                         <thead>
                           <tr>
@@ -149,9 +202,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           </tr>
                         </thead>
                         <tbody>
-                          {[...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || "")).map((d, j) => {
-                            const psMatch = (d.description || "").match(/[\d.]+\s+PER\s+SHARE/i);
-                            const perShare = psMatch ? parseFloat(psMatch[0]) : null;
+                          {sortedDivs.map((d, j) => {
+                            const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
+                            const perShare = psMatch ? parseFloat(psMatch[1]) : null;
                             return (
                               <tr key={j}>
                                 <td style={{ color: "#9ca3af" }}>{fmtDate(d.date || parseIBDate(d.dateTime))}</td>
@@ -172,7 +225,8 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                         </tfoot>
                       </table>
                     </div>
-                  )}
+                    );
+                  })()}
                 </div>
               );
             })}

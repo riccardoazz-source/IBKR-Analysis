@@ -5,17 +5,14 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { fmtCcy, fmtNum, fmtPct, fmtDateS, dayKey } from "@/lib/formatters";
-import { computeTWR } from "@/lib/math";
-import { BENCH } from "@/lib/constants";
-import type { ParsedData, Benchmarks } from "@/lib/types";
+import type { ParsedData } from "@/lib/types";
 import { parseIBDate } from "@/lib/parser";
 
 interface Props {
   data: ParsedData;
-  benchmarks: Benchmarks | null;
 }
 
-export default function PortfolioChart({ data, benchmarks }: Props) {
+export default function PortfolioChart({ data }: Props) {
   const [period, setPeriod] = useState("ALL");
   const [view, setView] = useState<"value" | "perf">("perf");
 
@@ -97,37 +94,6 @@ export default function PortfolioChart({ data, benchmarks }: Props) {
     return r.length >= 2 ? r : dailyPts;
   }, [dailyPts, period]);
 
-  // Attach real benchmark daily data aligned to portfolio dates
-  const cd = useMemo(() => {
-    if (view !== "perf" || !benchmarks) return filtered;
-    return filtered.map((p) => {
-      const pt: Record<string, unknown> = { ...p };
-      BENCH.forEach((bm) => {
-        const bmData = benchmarks[bm.key as keyof Benchmarks];
-        if (!bmData) return;
-        // Find closest benchmark series point on or before this date
-        const series = bmData.series;
-        if (!series?.length) {
-          // Fallback: linear interpolation using ytd
-          const prog = filtered.length > 1
-            ? (filtered.indexOf(p)) / (filtered.length - 1)
-            : 1;
-          pt[bm.key] = +(bmData.ytd * prog * 100).toFixed(2);
-          return;
-        }
-        // Binary search for closest date
-        let lo = 0, hi = series.length - 1, best = series[0];
-        while (lo <= hi) {
-          const mid = (lo + hi) >> 1;
-          if (series[mid].date <= p.dateKey) { best = series[mid]; lo = mid + 1; }
-          else hi = mid - 1;
-        }
-        pt[bm.key] = +(best.cum * 100).toFixed(2);
-      });
-      return pt;
-    });
-  }, [filtered, benchmarks, view]);
-
   const last = filtered[filtered.length - 1];
 
   if (!hasDailyData) return (
@@ -167,7 +133,7 @@ export default function PortfolioChart({ data, benchmarks }: Props) {
                 </span>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={200}>
               <AreaChart data={filtered} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gN" x1="0" y1="0" x2="0" y2="1">
@@ -197,31 +163,20 @@ export default function PortfolioChart({ data, benchmarks }: Props) {
               <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>— Total (incl. div.)</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b" }}>— Price (excl. div.)</span>
-                {benchmarks && BENCH.filter((bm) => (cd[0] as Record<string, unknown>)?.[bm.key] != null).map((bm) => (
-                  <span key={bm.key} style={{ fontSize: 12, fontWeight: 700, color: bm.color }}>— {bm.label}</span>
-                ))}
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={cd} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={filtered} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => v.toFixed(1) + "%"} />
                 <Tooltip
                   contentStyle={{ borderRadius: 8, fontSize: 12, border: "1px solid #e5e7eb" }}
-                  formatter={(v: number, n: string) => {
-                    const bm = BENCH.find((b) => b.key === n);
-                    return [v?.toFixed(2) + "%", bm ? bm.label : n === "perfWDiv" ? "Total (incl. div.)" : "Price (excl. div.)"];
-                  }}
+                  formatter={(v: number, n: string) => [v?.toFixed(2) + "%", n === "perfWDiv" ? "Total (incl. div.)" : "Price (excl. div.)"]}
                 />
                 <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} />
                 <Line type="monotone" dataKey="perfWDiv" stroke="#16a34a" strokeWidth={2.5} dot={false} connectNulls name="perfWDiv" />
                 <Line type="monotone" dataKey="perfNoDiv" stroke="#f59e0b" strokeWidth={2} dot={false} strokeDasharray="5 3" connectNulls name="perfNoDiv" />
-                {benchmarks && BENCH.map((bm) =>
-                  (cd[0] as Record<string, unknown>)?.[bm.key] != null ? (
-                    <Line key={bm.key} type="monotone" dataKey={bm.key} stroke={bm.color} strokeWidth={1.5} dot={false} connectNulls name={bm.key} />
-                  ) : null
-                )}
               </LineChart>
             </ResponsiveContainer>
           </>
