@@ -1,0 +1,183 @@
+"use client";
+import { useState, useMemo } from "react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import Stat from "@/components/Stat";
+import { fmtCcy, fmtNum, fmtDate, fmtMY } from "@/lib/formatters";
+import { COLORS } from "@/lib/constants";
+import { parseIBDate } from "@/lib/parser";
+import type { ParsedData } from "@/lib/types";
+
+export default function DividendsTab({ data }: { data: ParsedData }) {
+  const { dividends, withholding, account, positions } = data;
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const posMap = positions.reduce<Record<string, typeof positions[0]>>((m, p) => { m[p.symbol] = p; return m; }, {});
+  const totalGrossEUR = dividends.reduce((s, d) => s + d.amount * d.fxRate, 0);
+  const totalWHEUR = withholding.reduce((s, d) => s + d.amount * d.fxRate, 0);
+
+  const bySymbol = dividends.reduce<Record<string, typeof dividends>>((m, d) => {
+    if (!m[d.symbol]) m[d.symbol] = [];
+    m[d.symbol].push(d);
+    return m;
+  }, {});
+
+  const whBySymbol = withholding.reduce<Record<string, number>>((m, d) => {
+    if (d.symbol) m[d.symbol] = (m[d.symbol] || 0) + d.amount * d.fxRate;
+    return m;
+  }, {});
+
+  const byMonth = useMemo(() => {
+    const m: Record<string, { key: string; label: string; gross: number; wh: number }> = {};
+    for (const d of dividends) {
+      const dt = d.date || parseIBDate(d.dateTime);
+      if (!dt) continue;
+      const k = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
+      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0 };
+      m[k].gross += d.amount * d.fxRate;
+    }
+    for (const d of withholding) {
+      const dt = d.date || parseIBDate(d.dateTime);
+      if (!dt) continue;
+      const k = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
+      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0 };
+      m[k].wh += d.amount * d.fxRate;
+    }
+    return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((r) => ({ ...r, net: r.gross + r.wh }));
+  }, [dividends, withholding]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+        <Stat label={`Gross (${account.currency})`} value={fmtCcy(totalGrossEUR, account.currency)} color="#d97706" size="lg" />
+        <Stat label="Withholding Tax" value={fmtCcy(totalWHEUR, account.currency)} color="#dc2626" />
+        <Stat label="Net" value={fmtCcy(totalGrossEUR + totalWHEUR, account.currency)} color="#16a34a" />
+        <Stat label="Payments" value={dividends.length.toString()} sub={`${Object.keys(bySymbol).length} securities`} />
+      </div>
+
+      {byMonth.length > 0 && (
+        <>
+          <div className="card">
+            <div className="st">Monthly net dividends ({account.currency})</div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={byMonth.map((m) => ({ label: m.label, Net: +m.net.toFixed(2) }))} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} width={55} axisLine={false} tickLine={false} tickFormatter={(v) => fmtNum(v, 0)} />
+                <Tooltip formatter={(v: number) => [fmtCcy(v, account.currency), "Net"]} contentStyle={{ borderRadius: 8, fontSize: 12, border: "1px solid #e5e7eb" }} />
+                <Bar dataKey="Net" fill="#16a34a" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="card">
+            <div className="st">Monthly summary</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th style={{ textAlign: "right" }}>Gross</th>
+                  <th style={{ textAlign: "right" }}>Withholding</th>
+                  <th style={{ textAlign: "right" }}>Net</th>
+                  <th style={{ textAlign: "right" }}>% total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {byMonth.map((m) => (
+                  <tr key={m.key}>
+                    <td style={{ fontWeight: 600 }}>{m.label}</td>
+                    <td style={{ textAlign: "right", color: "#d97706" }}>{fmtCcy(m.gross, account.currency)}</td>
+                    <td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(m.wh, account.currency)}</td>
+                    <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 700 }}>{fmtCcy(m.net, account.currency)}</td>
+                    <td style={{ textAlign: "right", color: "#9ca3af" }}>{totalGrossEUR > 0 ? fmtNum(m.gross / totalGrossEUR * 100, 2) + "%" : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>TOTAL</td>
+                  <td style={{ textAlign: "right", color: "#d97706" }}>{fmtCcy(totalGrossEUR, account.currency)}</td>
+                  <td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(totalWHEUR, account.currency)}</td>
+                  <td style={{ textAlign: "right", color: "#16a34a" }}>{fmtCcy(totalGrossEUR + totalWHEUR, account.currency)}</td>
+                  <td style={{ textAlign: "right", color: "#9ca3af" }}>100,00%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
+      )}
+
+      <div className="card">
+        <div className="st">By security</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {Object.entries(bySymbol)
+            .sort((a, b) => b[1].reduce((s, d) => s + d.amount * d.fxRate, 0) - a[1].reduce((s, d) => s + d.amount * d.fxRate, 0))
+            .map(([sk, divs], i) => {
+              const tG = divs.reduce((s, d) => s + d.amount * d.fxRate, 0);
+              const tW = whBySymbol[sk] || 0;
+              const tN = tG + tW;
+              const isOpen = expanded === sk;
+              return (
+                <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+                  <div
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff" }}
+                    onClick={() => setExpanded(isOpen ? null : sk)}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <span style={{ color: COLORS[i % 12], fontWeight: 700 }}>●</span>
+                      <span style={{ fontWeight: 700, fontSize: 14 }}>{sk}</span>
+                      <span className="pill pill-a">{divs.length} payments</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>{fmtCcy(tN, account.currency)}</div>
+                        {tW !== 0 && <div style={{ fontSize: 11, color: "#dc2626" }}>({fmtCcy(tG, account.currency)} gross)</div>}
+                      </div>
+                      <span style={{ color: "#9ca3af", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
+                    </div>
+                  </div>
+                  {isOpen && (
+                    <div style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Date</th>
+                            <th style={{ textAlign: "right" }}>Amount</th>
+                            <th>CCY</th>
+                            <th style={{ textAlign: "right" }}>Per Share</th>
+                            <th style={{ textAlign: "right" }}>FX Rate</th>
+                            <th style={{ textAlign: "right" }}>In {account.currency}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || "")).map((d, j) => {
+                            const psMatch = (d.description || "").match(/[\d.]+\s+PER\s+SHARE/i);
+                            const perShare = psMatch ? parseFloat(psMatch[0]) : null;
+                            return (
+                              <tr key={j}>
+                                <td style={{ color: "#9ca3af" }}>{fmtDate(d.date || parseIBDate(d.dateTime))}</td>
+                                <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 600 }}>{fmtNum(d.amount, 4)} {d.currency}</td>
+                                <td style={{ color: "#9ca3af" }}>{d.currency}</td>
+                                <td style={{ textAlign: "right", color: "#6b7280" }}>{perShare != null ? `${fmtNum(perShare, 4)} ${d.currency}/sh` : "—"}</td>
+                                <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtNum(d.fxRate, 4)}</td>
+                                <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 700 }}>{fmtCcy(d.amount * d.fxRate, account.currency)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr>
+                            <td>Net total</td><td></td><td></td><td></td><td></td>
+                            <td style={{ textAlign: "right" }}>{fmtCcy(tN, account.currency)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
