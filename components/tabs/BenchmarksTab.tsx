@@ -24,6 +24,7 @@ interface Props {
 export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props) {
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState("");
+  const [period, setPeriod] = useState("ALL");
 
   const { nav, account, deposits, dividends, dailyNav, transfers } = data;
   const from = parseIBDate(account.fromDate) || new Date(new Date().getFullYear(), 0, 1);
@@ -120,6 +121,21 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
     setLoading(false);
   };
 
+  const filteredChartData = useMemo(() => {
+    if (!chartData.length) return [];
+    if (period === "ALL") return chartData;
+    const now = Date.now();
+    const cuts: Record<string, number> = {
+      "1M": now - 30 * 864e5,
+      "3M": now - 90 * 864e5,
+      YTD: +new Date(new Date().getFullYear(), 0, 1),
+      "1Y": now - 365 * 864e5,
+    };
+    const cut = cuts[period] || 0;
+    const result = chartData.filter((p) => new Date(p.date as string).getTime() >= cut);
+    return result.length >= 2 ? result : chartData;
+  }, [chartData, period]);
+
   const hasChart = chartData.length > 0 && benchmarks;
 
   return (
@@ -148,7 +164,14 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       {/* Chart: portfolio vs benchmarks */}
       {hasChart && (
         <div className="card">
-          <div className="st">Performance chart — Portfolio vs Benchmarks</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            <div className="st" style={{ marginBottom: 0 }}>Performance chart — Portfolio vs Benchmarks</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {["1M", "3M", "YTD", "1Y", "ALL"].map((p) => (
+                <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
+              ))}
+            </div>
+          </div>
           {/* Legend */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -169,7 +192,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
             })}
           </div>
           <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <LineChart data={filteredChartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
               <YAxis
