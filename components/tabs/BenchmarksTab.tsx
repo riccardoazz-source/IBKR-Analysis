@@ -24,7 +24,7 @@ interface Props {
 export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props) {
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState("");
-  const [period, setPeriod] = useState("ALL");
+  const [period, setPeriod] = useState("MAX");
 
   const { nav, account, deposits, dividends, dailyNav, transfers } = data;
   const from = parseIBDate(account.fromDate) || new Date(new Date().getFullYear(), 0, 1);
@@ -123,17 +123,38 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
 
   const filteredChartData = useMemo(() => {
     if (!chartData.length) return [];
-    if (period === "ALL") return chartData;
-    const now = Date.now();
-    const cuts: Record<string, number> = {
-      "1M": now - 30 * 864e5,
-      "3M": now - 90 * 864e5,
-      YTD: +new Date(new Date().getFullYear(), 0, 1),
-      "1Y": now - 365 * 864e5,
-    };
-    const cut = cuts[period] || 0;
-    const result = chartData.filter((p) => new Date(p.date as string).getTime() >= cut);
-    return result.length >= 2 ? result : chartData;
+
+    // Step 1: slice by period
+    let slice = chartData;
+    if (period !== "MAX") {
+      const now = Date.now();
+      const cuts: Record<string, number> = {
+        "1M": now - 30 * 864e5,
+        "6M": now - 182 * 864e5,
+        YTD: +new Date(new Date().getFullYear(), 0, 1),
+        "1A": now - 365 * 864e5,
+        "5A": now - 5 * 365 * 864e5,
+      };
+      const cut = cuts[period] || 0;
+      const r = chartData.filter((p) => new Date(p.date as string).getTime() >= cut);
+      slice = r.length >= 2 ? r : chartData;
+    }
+
+    // Step 2: rebase all series to 0% at first visible point
+    if (!slice.length) return slice;
+    const first = slice[0];
+    const keys = ["portfolio", ...BENCH_DISPLAY.map((b) => b.key)] as string[];
+    return slice.map((pt) => {
+      const row: Record<string, unknown> = { date: pt.date, label: pt.label };
+      keys.forEach((k) => {
+        const v = pt[k];
+        const f = first[k];
+        if (typeof v === "number" && typeof f === "number") {
+          row[k] = +(((1 + v / 100) / (1 + f / 100) - 1) * 100).toFixed(2);
+        }
+      });
+      return row;
+    });
   }, [chartData, period]);
 
   const hasChart = chartData.length > 0 && benchmarks;
@@ -166,8 +187,8 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             <div className="st" style={{ marginBottom: 0 }}>Performance chart — Portfolio vs Benchmarks</div>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["1M", "3M", "YTD", "1Y", "ALL"].map((p) => (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {["1M", "6M", "YTD", "1A", "5A", "MAX"].map((p) => (
                 <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
               ))}
             </div>

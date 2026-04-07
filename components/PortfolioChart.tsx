@@ -13,7 +13,7 @@ interface Props {
 }
 
 export default function PortfolioChart({ data }: Props) {
-  const [period, setPeriod] = useState("ALL");
+  const [period, setPeriod] = useState("MAX");
   const [view, setView] = useState<"value" | "perf">("perf");
 
   const { nav, deposits, dividends, account, dailyNav, transfers } = data;
@@ -82,19 +82,32 @@ export default function PortfolioChart({ data }: Props) {
 
   const filtered = useMemo(() => {
     if (!dailyPts) return [];
+    if (period === "MAX") return dailyPts;
     const now = Date.now();
     const cuts: Record<string, number> = {
       "1M": now - 30 * 864e5,
-      "3M": now - 90 * 864e5,
+      "6M": now - 182 * 864e5,
       YTD: +new Date(new Date().getFullYear(), 0, 1),
-      "1Y": now - 365 * 864e5,
+      "1A": now - 365 * 864e5,
+      "5A": now - 5 * 365 * 864e5,
     };
-    if (period === "ALL") return dailyPts;
     const r = dailyPts.filter((p) => p.ts >= (cuts[period] || 0));
     return r.length >= 2 ? r : dailyPts;
   }, [dailyPts, period]);
 
+  // Rebase performance series so first visible point = 0%
+  const rebasedPerf = useMemo(() => {
+    if (!filtered.length) return filtered;
+    const f = filtered[0];
+    return filtered.map((pt) => ({
+      ...pt,
+      perfWDiv: +(((1 + pt.perfWDiv / 100) / (1 + f.perfWDiv / 100) - 1) * 100).toFixed(2),
+      perfNoDiv: +(((1 + pt.perfNoDiv / 100) / (1 + f.perfNoDiv / 100) - 1) * 100).toFixed(2),
+    }));
+  }, [filtered]);
+
   const last = filtered[filtered.length - 1];
+  const lastPerf = rebasedPerf[rebasedPerf.length - 1];
 
   if (!hasDailyData) return (
     <div className="card">
@@ -112,8 +125,8 @@ export default function PortfolioChart({ data }: Props) {
           <button className={`btn-s${view === "perf" ? " act" : ""}`} onClick={() => setView("perf")}>Performance</button>
           <span style={{ fontSize: 10, color: "#16a34a", background: "#f0fdf4", padding: "2px 7px", borderRadius: 99, border: "1px solid #bbf7d0" }}>● daily</span>
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {["1M", "3M", "YTD", "1Y", "ALL"].map((p) => (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {["1M", "6M", "YTD", "1A", "5A", "MAX"].map((p) => (
             <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
           ))}
         </div>
@@ -157,8 +170,8 @@ export default function PortfolioChart({ data }: Props) {
         ) : (
           <>
             <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 26, fontWeight: 700, color: (last?.perfWDiv || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
-                {fmtPct((last?.perfWDiv || 0) / 100)}
+              <div style={{ fontSize: 26, fontWeight: 700, color: (lastPerf?.perfWDiv || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
+                {fmtPct((lastPerf?.perfWDiv || 0) / 100)}
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>— Total (incl. div.)</span>
@@ -166,7 +179,7 @@ export default function PortfolioChart({ data }: Props) {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={filtered} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <LineChart data={rebasedPerf} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => v.toFixed(1) + "%"} />
