@@ -49,7 +49,9 @@ tfoot td{padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums;borde
 .g-main{display:grid;grid-template-columns:2fr 1fr;gap:12px;}
 @media(max-width:640px){
   .g3{grid-template-columns:1fr 1fr;}
+  .g3>:last-child:nth-child(odd){grid-column:span 2;}
   .g4{grid-template-columns:1fr 1fr;}
+  .g4>:last-child:nth-child(odd){grid-column:span 2;}
   .g2{grid-template-columns:1fr;}
   .g-main{grid-template-columns:1fr;}
   .content-pad{padding:10px!important;}
