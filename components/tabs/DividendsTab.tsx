@@ -71,7 +71,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
           <div className="card">
             <div className="st">Monthly summary</div>
-            <table>
+            <div className="tbl-x"><table>
               <thead>
                 <tr>
                   <th>Month</th>
@@ -101,7 +101,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   <td style={{ textAlign: "right", color: "#9ca3af" }}>100,00%</td>
                 </tr>
               </tfoot>
-            </table>
+            </table></div>
           </div>
         </>
       )}
@@ -190,7 +190,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                         </div>
                       )}
 
-                      <table>
+                      <div className="tbl-x"><table>
                         <thead>
                           <tr>
                             <th>Date</th>
@@ -223,7 +223,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                             <td style={{ textAlign: "right" }}>{fmtCcy(tN, account.currency)}</td>
                           </tr>
                         </tfoot>
-                      </table>
+                      </table></div>
                     </div>
                     );
                   })()}

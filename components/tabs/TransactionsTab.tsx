@@ -79,7 +79,7 @@ export default function TransactionsTab({ data }: { data: ParsedData }) {
               {symbolsWithPnl.length > 0 && (
                 <div className="card">
                   <div className="st">Realized P&L by symbol</div>
-                  <table>
+                  <div className="tbl-x"><table>
                     <thead><tr><th style={{ textAlign: "left" }}>Symbol</th><th style={{ textAlign: "left" }}>Description</th><th style={{ textAlign: "right" }}># Trades</th><th style={{ textAlign: "right" }}>W/L</th><th style={{ textAlign: "right" }}>Realized ({account.currency})</th><th style={{ textAlign: "center" }}>Result</th></tr></thead>
                     <tbody>
                       {symbolsWithPnl.map((r) => (
@@ -94,7 +94,7 @@ export default function TransactionsTab({ data }: { data: ParsedData }) {
                       ))}
                     </tbody>
                     <tfoot><tr><td colSpan={3}>TOTAL</td><td></td><td style={{ textAlign: "right" }} className={totalRealizedBase >= 0 ? "pos" : "neg"}>{fmtCcy(totalRealizedBase, account.currency)}</td><td></td></tr></tfoot>
-                  </table>
+                  </table></div>
                 </div>
               )}
 

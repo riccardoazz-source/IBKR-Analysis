@@ -217,7 +217,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       {/* Comparison table */}
       <div className="card">
         <div className="st">Return comparison table</div>
-        <table>
+        <div className="tbl-x"><table>
           <thead>
             <tr>
               <th>Instrument</th>
@@ -267,7 +267,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
               );
             })}
           </tbody>
-        </table>
+        </table></div>
         <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 8 }}>
           Tickers: SPY = S&P 500 · QQQ = Nasdaq 100 · VT = Vanguard Total World · BTC-USD = Bitcoin
         </div>

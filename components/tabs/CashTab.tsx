@@ -135,7 +135,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
             </span>
             <span style={{ fontWeight: 700, fontSize: 13 }} className={filteredTotal >= 0 ? "pos" : "neg"}>{fmtCcy(filteredTotal, account.currency)}</span>
           </div>
-          <table>
+          <div className="tbl-x"><table>
             <thead><tr><th>Date</th><th style={{ textAlign: "left" }}>Type</th><th style={{ textAlign: "right" }}>Amount ({account.currency})</th></tr></thead>
             <tbody>
               {filteredCashRows.map((d, i) => (
@@ -146,7 +146,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         <div className="card">
