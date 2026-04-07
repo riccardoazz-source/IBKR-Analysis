@@ -40,4 +40,20 @@ tfoot td{padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums;borde
 .st{font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px;}
 .search-box{width:100%;padding:7px 12px;border:1px solid #e5e7eb;border-radius:7px;font-size:13px;outline:none;font-family:inherit;margin-bottom:12px;}
 .search-box:focus{border-color:#2563eb;}
+.tbl-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.g-main{display:grid;grid-template-columns:2fr 1fr;gap:12px;}
+@media(max-width:640px){
+  .g3{grid-template-columns:1fr 1fr;}
+  .g4{grid-template-columns:1fr 1fr;}
+  .g2{grid-template-columns:1fr;}
+  .g-main{grid-template-columns:1fr;}
+  .content-pad{padding:10px!important;}
+  .tab-btn{font-size:11px!important;padding:9px 10px!important;}
+}
+@media(max-width:380px){
+  .g3{grid-template-columns:1fr;}
+}
 `;

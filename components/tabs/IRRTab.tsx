@@ -48,13 +48,13 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+      <div className="g4">
         <Stat label="Starting Capital" value={fmtCcy(startV, account.currency)} sub="opening NAV + transfers" />
         <Stat label="Current NAV" value={fmtCcy(nav.endingValue, account.currency)} />
         <Stat label="Total Return (incl. div.)" value={fmtPct(twr)} color={twr != null ? (twr >= 0 ? "#16a34a" : "#dc2626") : undefined} sub="Time-weighted · same as chart" />
         <Stat label="Portfolio XIRR" value={portIrr != null ? fmtPct(portIrr) : "—"} sub={irrNote || `money-weighted · annualised · ${Math.round(days)}d`} color={portIrr != null ? (portIrr >= 0 ? "#16a34a" : "#dc2626") : undefined} size="lg" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <div className="g2">
         <Stat label="Total dividends received" value={fmtCcy(totalDivs, account.currency)} color="#d97706" sub={`${dividends.length} payments`} />
         <Stat label="Commissions paid" value={fmtCcy(nav.commissions, account.currency)} color="#dc2626" sub="total period" />
       </div>

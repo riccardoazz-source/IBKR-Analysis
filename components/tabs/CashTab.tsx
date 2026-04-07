@@ -88,7 +88,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+      <div className="g3">
         <Stat label="NAV" value={fmtCcy(nav.endingValue, account.currency)} size="lg" />
         <Stat label="Net Cash In / Out" value={fmtCcy(totalNetCash, account.currency)} sub={`${deposits.filter((d) => d.amount > 0).length} deposits · ${deposits.filter((d) => d.amount < 0).length} withdrawals · ${(transfers || []).length} transfers`} />
         <Stat label="Capital Base" value={fmtCcy(capitalBase, account.currency)} sub="starting NAV + all cash in" />
@@ -113,7 +113,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div className="g2" style={{ gap: 12 }}>
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
             <div className="st" style={{ marginBottom: 0 }}>

@@ -407,29 +407,28 @@ export default function IBKRApp() {
       <input ref={uploadRef} type="file" accept=".xml" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
       {/* Header */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 3px rgba(0,0,0,.06)", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 700, fontSize: 16, color: "#111827" }}>IBKR Monitor</span>
-          <span style={{ color: "#e5e7eb" }}>|</span>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "8px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, boxShadow: "0 1px 3px rgba(0,0,0,.06)", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>IBKR</span>
           <button
             onClick={() => setShowPortfolioPanel((v) => !v)}
-            style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontSize: 13, color: "#374151", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, fontWeight: 600 }}
+            style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: "#374151", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5, fontWeight: 600, maxWidth: "38vw", overflow: "hidden" }}
           >
-            {activePortfolioName}
-            <span style={{ fontSize: 10, color: "#9ca3af" }}>▼</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePortfolioName}</span>
+            <span style={{ fontSize: 9, color: "#9ca3af", flexShrink: 0 }}>▼</span>
           </button>
           {!sbOk && <span className="pill pill-r" style={{ fontSize: 10 }}>Supabase ✗</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>{fmtCcy(data.nav.endingValue, data.account.currency)}</div>
-            <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".06em" }}>NAV</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>{fmtCcy(data.nav.endingValue, data.account.currency)}</div>
+            <div style={{ fontSize: 9, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".06em" }}>NAV</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: pnlTotal >= 0 ? "#16a34a" : "#dc2626" }}>{pnlTotal >= 0 ? "▲" : "▼"} {fmtCcy(Math.abs(pnlTotal), data.account.currency)}</div>
-            <div style={{ fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".06em" }}>Unrealized P&L</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: pnlTotal >= 0 ? "#16a34a" : "#dc2626" }}>{pnlTotal >= 0 ? "▲" : "▼"} {fmtCcy(Math.abs(pnlTotal), data.account.currency)}</div>
+            <div style={{ fontSize: 9, color: "#9ca3af", textTransform: "uppercase", letterSpacing: ".06em" }}>P&L</div>
           </div>
-          <button className="btn-p" style={{ fontSize: 12, padding: "6px 14px" }} onClick={() => uploadRef.current?.click()}>📤 Upload</button>
+          <button className="btn-p" style={{ fontSize: 12, padding: "5px 12px" }} onClick={() => uploadRef.current?.click()}>📤</button>
         </div>
       </div>
 
@@ -437,7 +436,7 @@ export default function IBKRApp() {
       {showPortfolioPanel && (
         <>
           <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setShowPortfolioPanel(false)} />
-          <div style={{ position: "fixed", top: 58, left: 16, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, boxShadow: "0 4px 24px rgba(0,0,0,.12)", width: 380, zIndex: 200 }}>
+          <div style={{ position: "fixed", top: 54, left: 8, right: 8, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, boxShadow: "0 4px 24px rgba(0,0,0,.12)", maxWidth: 380, zIndex: 200 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Portfolios</div>
             {portfolios.length === 0 && <div style={{ fontSize: 13, color: "#9ca3af", padding: "6px 0 10px" }}>No portfolios saved yet.</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 340, overflowY: "auto", marginBottom: 10 }}>
@@ -470,16 +469,16 @@ export default function IBKRApp() {
       )}
 
       {/* Tabs */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "0 20px", display: "flex", overflowX: "auto" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e5e7eb", padding: "0 8px", display: "flex", overflowX: "auto" }}>
         {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #2563eb" : "2px solid transparent", color: tab === t ? "#2563eb" : "#6b7280", fontSize: 13, fontWeight: tab === t ? 700 : 400, padding: "10px 14px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          <button key={t} onClick={() => setTab(t)} className="tab-btn" style={{ background: "none", border: "none", borderBottom: tab === t ? "2px solid #2563eb" : "2px solid transparent", color: tab === t ? "#2563eb" : "#6b7280", fontSize: 13, fontWeight: tab === t ? 700 : 400, padding: "10px 12px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
             {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {/* Content */}
-      <div style={{ padding: 16 }}>
+      <div className="content-pad" style={{ padding: 16 }}>
         {tab === "overview"      && <OverviewTab data={data} />}
         {tab === "positions"     && <PositionsTab data={data} />}
         {tab === "irr"           && <IRRTab data={data} portIrr={portIrr} irrNote={irrNote} />}

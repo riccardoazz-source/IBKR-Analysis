@@ -35,12 +35,12 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+      <div className="g3">
         <Stat label="Net Liquidation (NAV)" value={fmtCcy(nav.endingValue, account.currency)} size="lg" />
         <Stat label="Total Return — incl. dividends" value={fmtPct(twr)} color={twr != null ? (twr >= 0 ? "#16a34a" : "#dc2626") : undefined} sub="Time-weighted · same as chart" />
         <Stat label="Price Return — excl. dividends" value={fmtPct(twrNoDiv)} color={twrNoDiv != null ? (twrNoDiv >= 0 ? "#f59e0b" : "#dc2626") : undefined} sub="Without dividend contribution" />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+      <div className="g3">
         <Stat label="Starting Capital" value={fmtCcy(startV, account.currency)} sub="opening NAV + asset transfers" />
         <Stat label="Net Cash In / Out" value={fmtCcy(totalCash, account.currency)} sub={`${deposits.filter((d) => d.amount > 0).length} deposits · ${(data.transfers || []).length} transfers`} />
         <Stat label={`LTV · ${marginEUR > 0 ? "⚠ leverage" : "no debt"}`} value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossLong / nav.endingValue : null, 2) + "x" : "—"} color={marginEUR > 0 ? "#d97706" : "#16a34a"} sub={marginEUR > 0 ? `~${fmtCcy(marginEUR, account.currency)} margin debt` : "no leverage"} />
@@ -48,10 +48,10 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
 
       <PortfolioChart data={data} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+      <div className="g-main">
         <div className="card">
           <div className="st">Holdings · {positions.length} positions</div>
-          <table>
+          <div className="tbl-x"><table>
             <thead>
               <tr>
                 <th>Symbol</th><th>Type</th>
@@ -78,7 +78,7 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
