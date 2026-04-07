@@ -47,7 +47,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+      <div className="g4">
         <Stat label={`Gross (${account.currency})`} value={fmtCcy(totalGrossEUR, account.currency)} color="#d97706" size="lg" />
         <Stat label="Withholding Tax" value={fmtCcy(totalWHEUR, account.currency)} color="#dc2626" />
         <Stat label="Net" value={fmtCcy(totalGrossEUR + totalWHEUR, account.currency)} color="#16a34a" />
