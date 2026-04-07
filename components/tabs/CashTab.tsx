@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtNum, fmtDate } from "@/lib/formatters";
 import { sym } from "@/lib/formatters";
@@ -32,6 +32,46 @@ export default function CashTab({ data }: { data: ParsedData }) {
     (transfers || []).forEach((t) => rows.push({ date: t.date, label: "Internal Account Transfer", amount: t.amount * t.fxRate, isTransfer: true }));
     return rows.sort((a, b) => +(b.date || 0) - +(a.date || 0));
   }, [deposits, transfers]);
+
+  const [cashFilter, setCashFilter] = useState("all");
+
+  // Build dropdown options: All + years + months
+  const filterOptions = useMemo(() => {
+    const years = new Set<string>();
+    const months = new Set<string>();
+    allCashRows.forEach(({ date }) => {
+      if (!date) return;
+      const y = date.getUTCFullYear().toString();
+      const m = `${y}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+      years.add(y);
+      months.add(m);
+    });
+    const opts: { value: string; label: string }[] = [{ value: "all", label: "All periods" }];
+    [...years].sort().reverse().forEach((y) => opts.push({ value: `y:${y}`, label: y }));
+    [...months].sort().reverse().forEach((m) => {
+      const [y, mo] = m.split("-");
+      const dt = new Date(Number(y), Number(mo) - 1, 1);
+      opts.push({ value: `m:${m}`, label: dt.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) });
+    });
+    return opts;
+  }, [allCashRows]);
+
+  const filteredCashRows = useMemo(() => {
+    if (cashFilter === "all") return allCashRows;
+    return allCashRows.filter(({ date }) => {
+      if (!date) return false;
+      if (cashFilter.startsWith("y:")) {
+        return date.getUTCFullYear().toString() === cashFilter.slice(2);
+      }
+      if (cashFilter.startsWith("m:")) {
+        const [y, mo] = cashFilter.slice(2).split("-");
+        return date.getUTCFullYear() === Number(y) && date.getUTCMonth() + 1 === Number(mo);
+      }
+      return true;
+    });
+  }, [allCashRows, cashFilter]);
+
+  const filteredTotal = filteredCashRows.reduce((s, r) => s + r.amount, 0);
 
   const reconComputed =
     capitalBase +
@@ -75,17 +115,30 @@ export default function CashTab({ data }: { data: ParsedData }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="card">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div className="st" style={{ marginBottom: 0 }}>Cash Movements · {allCashRows.length} transactions</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div className="st" style={{ marginBottom: 0 }}>
+              Cash Movements · {filteredCashRows.length}{cashFilter !== "all" ? ` of ${allCashRows.length}` : ""} transactions
+            </div>
+            <select
+              value={cashFilter}
+              onChange={(e) => setCashFilter(e.target.value)}
+              style={{ padding: "5px 10px", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 12, color: "#374151", background: "#fff", cursor: "pointer", fontFamily: "inherit", outline: "none" }}
+            >
+              {filterOptions.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 7, marginBottom: 10 }}>
-            <span style={{ fontWeight: 700, fontSize: 13, color: "#15803d" }}>NET TOTAL</span>
-            <span style={{ fontWeight: 700, fontSize: 13 }} className={totalNetCash >= 0 ? "pos" : "neg"}>{fmtCcy(totalNetCash, account.currency)}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: filteredTotal >= 0 ? "#f0fdf4" : "#fef2f2", border: `1px solid ${filteredTotal >= 0 ? "#bbf7d0" : "#fecaca"}`, borderRadius: 7, marginBottom: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: filteredTotal >= 0 ? "#15803d" : "#dc2626" }}>
+              {cashFilter === "all" ? "NET TOTAL" : `TOTAL — ${filterOptions.find(o => o.value === cashFilter)?.label}`}
+            </span>
+            <span style={{ fontWeight: 700, fontSize: 13 }} className={filteredTotal >= 0 ? "pos" : "neg"}>{fmtCcy(filteredTotal, account.currency)}</span>
           </div>
           <table>
             <thead><tr><th>Date</th><th style={{ textAlign: "left" }}>Type</th><th style={{ textAlign: "right" }}>Amount ({account.currency})</th></tr></thead>
             <tbody>
-              {allCashRows.map((d, i) => (
+              {filteredCashRows.map((d, i) => (
                 <tr key={i}>
                   <td style={{ color: "#9ca3af", whiteSpace: "nowrap" }}>{fmtDate(d.date)}</td>
                   <td><span className={d.isTransfer ? "pill pill-a" : "pill pill-b"}>{d.label}</span></td>
