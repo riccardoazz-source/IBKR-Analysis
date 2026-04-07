@@ -85,11 +85,12 @@ export default function PortfolioChart({ data }: Props) {
     if (period === "MAX") return dailyPts;
     const now = Date.now();
     const cuts: Record<string, number> = {
+      "5D": now - 5 * 864e5,
       "1M": now - 30 * 864e5,
       "6M": now - 182 * 864e5,
       YTD: +new Date(new Date().getFullYear(), 0, 1),
-      "1A": now - 365 * 864e5,
-      "5A": now - 5 * 365 * 864e5,
+      "1Y": now - 365 * 864e5,
+      "5Y": now - 5 * 365 * 864e5,
     };
     const r = dailyPts.filter((p) => p.ts >= (cuts[period] || 0));
     return r.length >= 2 ? r : dailyPts;
@@ -126,7 +127,7 @@ export default function PortfolioChart({ data }: Props) {
           <span style={{ fontSize: 10, color: "#16a34a", background: "#f0fdf4", padding: "2px 7px", borderRadius: 99, border: "1px solid #bbf7d0" }}>● daily</span>
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {["1M", "6M", "YTD", "1A", "5A", "MAX"].map((p) => (
+          {["5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"].map((p) => (
             <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
           ))}
         </div>

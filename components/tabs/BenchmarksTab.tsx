@@ -129,11 +129,12 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
     if (period !== "MAX") {
       const now = Date.now();
       const cuts: Record<string, number> = {
+        "5D": now - 5 * 864e5,
         "1M": now - 30 * 864e5,
         "6M": now - 182 * 864e5,
         YTD: +new Date(new Date().getFullYear(), 0, 1),
-        "1A": now - 365 * 864e5,
-        "5A": now - 5 * 365 * 864e5,
+        "1Y": now - 365 * 864e5,
+        "5Y": now - 5 * 365 * 864e5,
       };
       const cut = cuts[period] || 0;
       const r = chartData.filter((p) => new Date(p.date as string).getTime() >= cut);
@@ -188,7 +189,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             <div className="st" style={{ marginBottom: 0 }}>Performance chart — Portfolio vs Benchmarks</div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {["1M", "6M", "YTD", "1A", "5A", "MAX"].map((p) => (
+              {["5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"].map((p) => (
                 <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
               ))}
             </div>
