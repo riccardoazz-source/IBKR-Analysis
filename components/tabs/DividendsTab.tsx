@@ -27,23 +27,40 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
     return m;
   }, {});
 
+  // Withholding per symbol in original currency
+  const whOrigBySymbol = withholding.reduce<Record<string, number>>((m, d) => {
+    if (d.symbol) m[d.symbol] = (m[d.symbol] || 0) + d.amount;
+    return m;
+  }, {});
+
   const byMonth = useMemo(() => {
-    const m: Record<string, { key: string; label: string; gross: number; wh: number }> = {};
+    const m: Record<string, { key: string; label: string; gross: number; wh: number; grossByCcy: Record<string, number>; whByCcy: Record<string, number> }> = {};
     for (const d of dividends) {
       const dt = d.date || parseIBDate(d.dateTime);
       if (!dt) continue;
       const k = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
-      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0 };
+      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0, grossByCcy: {}, whByCcy: {} };
       m[k].gross += d.amount * d.fxRate;
+      m[k].grossByCcy[d.currency] = (m[k].grossByCcy[d.currency] || 0) + d.amount;
     }
     for (const d of withholding) {
       const dt = d.date || parseIBDate(d.dateTime);
       if (!dt) continue;
       const k = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
-      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0 };
+      if (!m[k]) m[k] = { key: k, label: fmtMY(dt) ?? "", gross: 0, wh: 0, grossByCcy: {}, whByCcy: {} };
       m[k].wh += d.amount * d.fxRate;
+      m[k].whByCcy[d.currency] = (m[k].whByCcy[d.currency] || 0) + d.amount;
     }
-    return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((r) => ({ ...r, net: r.gross + r.wh }));
+    return Object.values(m).sort((a, b) => a.key.localeCompare(b.key)).map((r) => {
+      const net = r.gross + r.wh;
+      const netByCcy: Record<string, number> = { ...r.grossByCcy };
+      Object.entries(r.whByCcy).forEach(([ccy, wh]) => { netByCcy[ccy] = (netByCcy[ccy] || 0) + wh; });
+      const netOrigStr = Object.entries(netByCcy)
+        .filter(([, v]) => Math.abs(v) > 0.0001)
+        .map(([ccy, v]) => `${fmtNum(v, 2)} ${ccy}`)
+        .join(" · ");
+      return { ...r, net, netByCcy, netOrigStr };
+    });
   }, [dividends, withholding]);
 
   /* ── filter options (same pattern as Cash Movements) ── */
@@ -67,6 +84,16 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
   const filteredGross = filteredByMonth.reduce((s, m) => s + m.gross, 0);
   const filteredWH = filteredByMonth.reduce((s, m) => s + m.wh, 0);
   const filteredNet = filteredGross + filteredWH;
+
+  // Aggregate net-by-currency for the filtered period total
+  const filteredNetByCcy = filteredByMonth.reduce<Record<string, number>>((acc, m) => {
+    Object.entries(m.netByCcy).forEach(([ccy, v]) => { acc[ccy] = (acc[ccy] || 0) + v; });
+    return acc;
+  }, {});
+  const filteredNetOrigStr = Object.entries(filteredNetByCcy)
+    .filter(([, v]) => Math.abs(v) > 0.0001)
+    .map(([ccy, v]) => `${fmtNum(v, 2)} ${ccy}`)
+    .join(" · ");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -113,7 +140,8 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   <th>Month</th>
                   <th style={{ textAlign: "right" }}>Gross</th>
                   <th style={{ textAlign: "right" }}>Withholding</th>
-                  <th style={{ textAlign: "right" }}>Net</th>
+                  <th style={{ textAlign: "right" }}>Net (orig.)</th>
+                  <th style={{ textAlign: "right" }}>Net ({account.currency})</th>
                   <th style={{ textAlign: "right" }}>% total</th>
                 </tr>
               </thead>
@@ -123,6 +151,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     <td style={{ fontWeight: 600 }}>{m.label}</td>
                     <td style={{ textAlign: "right", color: "#d97706" }}>{fmtCcy(m.gross, account.currency)}</td>
                     <td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(m.wh, account.currency)}</td>
+                    <td style={{ textAlign: "right", color: "#6b7280", fontSize: 12 }}>{m.netOrigStr || "—"}</td>
                     <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 700 }}>{fmtCcy(m.net, account.currency)}</td>
                     <td style={{ textAlign: "right", color: "#9ca3af" }}>{filteredGross > 0 ? fmtNum(m.gross / filteredGross * 100, 2) + "%" : "—"}</td>
                   </tr>
@@ -133,6 +162,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   <td>{divFilter === "all" ? "TOTAL" : divFilterOptions.find((o) => o.value === divFilter)?.label ?? "TOTAL"}</td>
                   <td style={{ textAlign: "right", color: "#d97706" }}>{fmtCcy(filteredGross, account.currency)}</td>
                   <td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(filteredWH, account.currency)}</td>
+                  <td style={{ textAlign: "right", color: "#6b7280" }}>{filteredNetOrigStr || "—"}</td>
                   <td style={{ textAlign: "right", color: "#16a34a" }}>{fmtCcy(filteredNet, account.currency)}</td>
                   <td style={{ textAlign: "right", color: "#9ca3af" }}>100,00%</td>
                 </tr>
@@ -151,6 +181,11 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
               const tG = divs.reduce((s, d) => s + d.amount * d.fxRate, 0);
               const tW = whBySymbol[sk] || 0;
               const tN = tG + tW;
+              const divCcy = divs[0]?.currency ?? account.currency;
+              const tG_orig = divs.reduce((s, d) => s + d.amount, 0);
+              const tW_orig = whOrigBySymbol[sk] || 0;
+              const tN_orig = tG_orig + tW_orig;
+              const showOrig = divCcy !== account.currency;
               const isOpen = expanded === sk;
               return (
                 <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
@@ -165,6 +200,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                       <div style={{ textAlign: "right" }}>
+                        {showOrig && (
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{fmtNum(tN_orig, 2)} {divCcy}</div>
+                        )}
                         <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>{fmtCcy(tN, account.currency)}</div>
                         {tW !== 0 && <div style={{ fontSize: 11, color: "#dc2626" }}>({fmtCcy(tG, account.currency)} gross)</div>}
                       </div>
