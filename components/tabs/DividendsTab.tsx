@@ -2,7 +2,7 @@
 import { useState, useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, ReferenceLine } from "recharts";
 import Stat from "@/components/Stat";
-import { fmtCcy, fmtNum, fmtDate, fmtMY } from "@/lib/formatters";
+import { fmtCcy, fmtNum, fmtDate, fmtMY, fmtPct } from "@/lib/formatters";
 import { COLORS } from "@/lib/constants";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
@@ -186,6 +186,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
               const tW_orig = whOrigBySymbol[sk] || 0;
               const tN_orig = tG_orig + tW_orig;
               const showOrig = divCcy !== account.currency;
+              const pos = posMap[sk];
+              const posValue = pos ? pos.positionValue * pos.fxRate : 0;
+              const yieldReceived = posValue > 0 ? tN / posValue : null;
               const isOpen = expanded === sk;
               return (
                 <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
@@ -197,6 +200,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                       <span style={{ color: COLORS[i % 12], fontWeight: 700 }}>●</span>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{sk}</span>
                       <span className="pill pill-a">{divs.length} payments</span>
+                      {yieldReceived != null && (
+                        <span className="pill pill-g" title="Total received dividends / current position value">{fmtPct(yieldReceived)} yield</span>
+                      )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                       <div style={{ textAlign: "right" }}>
