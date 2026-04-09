@@ -185,10 +185,11 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                       ? perShareSeries.reduce((s, r) => s + (r.perShare ?? 0), 0) / perShareSeries.length
                       : null;
 
-                    /* amount series */
+                    /* amount series — raw currency, no FX conversion */
+                    const amountCcy = sortedDivs[0]?.currency ?? account.currency;
                     const amountSeries = sortedDivs.map((d) => ({
                       label: fmtDate(d.date || parseIBDate(d.dateTime)) ?? "",
-                      amount: +(d.amount * d.fxRate).toFixed(2),
+                      amount: +d.amount.toFixed(4),
                     }));
                     const avgAmount = amountSeries.reduce((s, r) => s + r.amount, 0) / amountSeries.length;
 
@@ -220,14 +221,14 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                       {amountSeries.length >= 1 && (
                         <div style={{ padding: "14px 16px 0" }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                            Dividend amount over time ({account.currency})
+                            Dividend amount over time ({amountCcy})
                           </div>
                           <ResponsiveContainer width="100%" height={110}>
                             <LineChart data={amountSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                               <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={48} tickFormatter={(v: number) => fmtNum(v, 0)} domain={["auto", "auto"]} />
-                              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [fmtCcy(v, account.currency), "Amount"]} />
+                              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
+                              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 4)} ${amountCcy}`, "Amount"]} />
                               <ReferenceLine y={avgAmount} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
                               <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} dot={{ r: 4, fill: "#2563eb", strokeWidth: 0 }} connectNulls />
                             </LineChart>
