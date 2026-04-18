@@ -129,6 +129,13 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                 <Bar dataKey="Net" fill="#16a34a" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            {filteredByMonth.length >= 2 && (
+              <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, fontSize: 12, color: "#6b7280" }}>
+                Avg / month:
+                <strong style={{ color: "#16a34a" }}>{fmtCcy(filteredNet / filteredByMonth.length, account.currency)}</strong>
+                <span style={{ color: "#9ca3af" }}>({filteredByMonth.length} months)</span>
+              </div>
+            )}
           </div>
 
           {/* Monthly Summary table with filter */}
@@ -254,7 +261,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
                               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} />
                               {avgPerShare != null && (
-                                <ReferenceLine y={avgPerShare} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
+                                <ReferenceLine y={avgPerShare} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: `avg ${avgPerShare.toFixed(4)}`, position: "right", fontSize: 9, fill: "#9ca3af" }} />
                               )}
                               <Line type="monotone" dataKey="perShare" stroke="#16a34a" strokeWidth={2} dot={{ r: 4, fill: "#16a34a", strokeWidth: 0 }} connectNulls />
                             </LineChart>
