@@ -212,23 +212,30 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   {isOpen && (() => {
                     const sortedDivs = [...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || ""));
 
-                    /* per-share series */
-                    const perShareSeries = sortedDivs.map((d) => {
+                    /* per-share series — one entry per date (first valid rate) */
+                    const perShareByDate: Record<string, { label: string; perShare: number; currency: string }> = {};
+                    sortedDivs.forEach((d) => {
                       const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
                       const perShare = psMatch ? parseFloat(psMatch[1]) : null;
-                      return { label: fmtDate(d.date || parseIBDate(d.dateTime)) ?? "", perShare, currency: d.currency };
-                    }).filter((r) => r.perShare != null);
+                      const label = fmtDate(d.date || parseIBDate(d.dateTime)) ?? "";
+                      if (perShare != null && !perShareByDate[label])
+                        perShareByDate[label] = { label, perShare, currency: d.currency };
+                    });
+                    const perShareSeries = Object.values(perShareByDate);
                     const hasPerShare = perShareSeries.length >= 1;
                     const avgPerShare = hasPerShare
-                      ? perShareSeries.reduce((s, r) => s + (r.perShare ?? 0), 0) / perShareSeries.length
+                      ? perShareSeries.reduce((s, r) => s + r.perShare, 0) / perShareSeries.length
                       : null;
 
-                    /* amount series — raw currency, no FX conversion */
+                    /* amount series — group by date, sum (handles IBKR corrections) */
                     const amountCcy = sortedDivs[0]?.currency ?? account.currency;
-                    const amountSeries = sortedDivs.map((d) => ({
-                      label: fmtDate(d.date || parseIBDate(d.dateTime)) ?? "",
-                      amount: +d.amount.toFixed(4),
-                    }));
+                    const amountByDate: Record<string, { label: string; amount: number }> = {};
+                    sortedDivs.forEach((d) => {
+                      const label = fmtDate(d.date || parseIBDate(d.dateTime)) ?? "";
+                      if (!amountByDate[label]) amountByDate[label] = { label, amount: 0 };
+                      amountByDate[label].amount += d.amount;
+                    });
+                    const amountSeries = Object.values(amountByDate).map((r) => ({ label: r.label, amount: +r.amount.toFixed(4) }));
                     const avgAmount = amountSeries.reduce((s, r) => s + r.amount, 0) / amountSeries.length;
 
                     return (
