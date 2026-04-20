@@ -193,12 +193,12 @@ export default function CashTab({ data }: { data: ParsedData }) {
             </div>
           )}
 
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0 4px", fontSize: 14, borderTop: "2px solid #e5e7eb", marginTop: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", fontSize: 14, borderTop: "2px solid #e5e7eb", marginTop: 6, background: "#eff6ff", borderRadius: 5 }}>
             <span style={{ fontWeight: 700, color: "#374151" }}>Profit / Loss</span>
             <span style={{ fontWeight: 700 }} className={profitLoss >= 0 ? "pos" : "neg"}>{fmtCcy(profitLoss, account.currency)}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0 4px", fontSize: 16, borderTop: "1px solid #e5e7eb" }}>
-            <span style={{ fontWeight: 700 }}>NAV</span>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", fontSize: 16, background: "#eff6ff", borderRadius: 5, marginTop: 4 }}>
+            <span style={{ fontWeight: 700, color: "#2563eb" }}>NAV</span>
             <span style={{ fontWeight: 700, color: "#2563eb" }}>{fmtCcy(nav.endingValue, account.currency)}</span>
           </div>
         </div>
