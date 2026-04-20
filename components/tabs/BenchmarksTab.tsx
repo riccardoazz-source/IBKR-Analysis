@@ -45,11 +45,12 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
     to
   );
 
-  // Build portfolio daily cumulative-return series (same logic as PortfolioChart)
+  // Build portfolio daily cumulative-return series (total + price, same logic as PortfolioChart)
   const portfolioSeries = useMemo(() => {
     if (!dailyNav || dailyNav.length < 2) return [];
     const sN = nav.startingValue || 0;
     const depMap: Record<string, number> = {};
+    const divMap: Record<string, number> = {};
     deposits.forEach((d) => {
       const dt = d.date || parseIBDate(d.dateTime);
       if (!dt) return;
@@ -61,25 +62,34 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       const k = dayKey(+t.date);
       depMap[k] = (depMap[k] || 0) + t.amount * t.fxRate;
     });
-    let cT = 1;
+    dividends.forEach((d) => {
+      const dt = d.date || parseIBDate(d.dateTime);
+      if (!dt) return;
+      const k = dayKey(+dt);
+      divMap[k] = (divMap[k] || 0) + d.amount * d.fxRate;
+    });
+    let cT = 1, cN = 1;
     return dailyNav.map((pt, i) => {
       const k = dayKey(+pt.date);
       const pN = i === 0 ? sN : dailyNav[i - 1].total;
       const dep = depMap[k] || 0;
+      const div = divMap[k] || 0;
       const den = pN + Math.max(0, dep);
       if (den > 0 && isFinite(pt.total)) {
         const r = (pt.total - pN - dep) / den;
         if (isFinite(r) && r > -0.9 && r < 2) cT *= 1 + r;
+        const rn = (pt.total - div - pN - dep) / den;
+        if (isFinite(rn) && rn > -0.9 && rn < 2) cN *= 1 + rn;
       }
-      return { date: k, label: fmtDateS(pt.date) ?? k, cum: +(( cT - 1) * 100).toFixed(2) };
+      return { date: k, label: fmtDateS(pt.date) ?? k, cum: +((cT - 1) * 100).toFixed(2), cumNoDiv: +((cN - 1) * 100).toFixed(2) };
     });
-  }, [dailyNav, nav, deposits, transfers]);
+  }, [dailyNav, nav, deposits, dividends, transfers]);
 
   // Merge portfolio + benchmarks into a single chart dataset aligned by date
   const chartData = useMemo(() => {
     if (!portfolioSeries.length) return [];
     return portfolioSeries.map((pt) => {
-      const row: Record<string, unknown> = { date: pt.date, label: pt.label, portfolio: pt.cum };
+      const row: Record<string, unknown> = { date: pt.date, label: pt.label, portfolio: pt.cum, portfolioNoDiv: pt.cumNoDiv };
       if (benchmarks) {
         BENCH_DISPLAY.forEach((bm) => {
           const series = benchmarks[bm.key as keyof Benchmarks]?.series;
@@ -144,7 +154,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
     // Step 2: rebase all series to 0% at first visible point
     if (!slice.length) return slice;
     const first = slice[0];
-    const keys = ["portfolio", ...BENCH_DISPLAY.map((b) => b.key)] as string[];
+    const keys = ["portfolio", "portfolioNoDiv", ...BENCH_DISPLAY.map((b) => b.key)] as string[];
     return slice.map((pt) => {
       const row: Record<string, unknown> = { date: pt.date, label: pt.label };
       keys.forEach((k) => {
@@ -260,63 +270,74 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       )}
 
       {/* Comparison table */}
-      <div className="card">
-        <div className="st">Return comparison table</div>
-        <div className="tbl-x"><table>
-          <thead>
-            <tr>
-              <th>Instrument</th>
-              <th style={{ textAlign: "right" }}>Period Return</th>
-              <th style={{ textAlign: "right" }}>vs My Portfolio (total)</th>
-              <th style={{ textAlign: "right" }}>vs My Portfolio (price)</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style={{ background: "#f0fdf4" }}>
-              <td>
-                <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#16a34a", marginRight: 8 }} />
-                <strong>My Portfolio — Total return (incl. div.)</strong>
-              </td>
-              <td style={{ textAlign: "right", fontWeight: 700 }} className={twr != null ? (twr >= 0 ? "pos" : "neg") : ""}>{fmtPct(twr)}</td>
-              <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
-              <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
-            </tr>
-            <tr style={{ background: "#fffbeb" }}>
-              <td>
-                <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", marginRight: 8 }} />
-                My Portfolio — Price return (excl. div.)
-              </td>
-              <td style={{ textAlign: "right", fontWeight: 600 }} className={perfNoDiv != null ? (perfNoDiv >= 0 ? "pos" : "neg") : ""}>{fmtPct(perfNoDiv)}</td>
-              <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
-              <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
-            </tr>
-            {BENCH_DISPLAY.map((bm) => {
-              const bmData = benchmarks?.[bm.key as keyof Benchmarks];
-              const ytd = bmData?.ytd ?? null;
-              const dT = twr != null && ytd != null ? twr - ytd : null;
-              const dN = perfNoDiv != null && ytd != null ? perfNoDiv - ytd : null;
-              return (
-                <tr key={bm.key}>
-                  <td>
-                    <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: bm.color, marginRight: 8 }} />
-                    {bm.label}
-                  </td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }} className={ytd != null ? (ytd >= 0 ? "pos" : "neg") : ""}>{ytd != null ? fmtPct(ytd) : "—"}</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }} className={dT != null ? (dT >= 0 ? "pos" : "neg") : ""}>
-                    {dT != null ? <>{dT > 0 ? "▲ " : "▼ "}{fmtPct(Math.abs(dT))}</> : "—"}
-                  </td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }} className={dN != null ? (dN >= 0 ? "pos" : "neg") : ""}>
-                    {dN != null ? <>{dN > 0 ? "▲ " : "▼ "}{fmtPct(Math.abs(dN))}</> : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table></div>
-        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 8 }}>
-          Tickers: SPY = S&P 500 · QQQ = Nasdaq 100 · VT = Vanguard Total World · BTC-USD = Bitcoin
+      {(() => {
+        const lastPt = filteredChartData[filteredChartData.length - 1];
+        const pTotal = lastPt != null && typeof lastPt.portfolio === "number" ? lastPt.portfolio / 100 : twr;
+        const pPrice = lastPt != null && typeof lastPt.portfolioNoDiv === "number" ? lastPt.portfolioNoDiv / 100 : perfNoDiv;
+        return (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            <div className="st" style={{ marginBottom: 0 }}>Return comparison table</div>
+            <span style={{ fontSize: 11, color: "#9ca3af" }}>Period: {period}</span>
+          </div>
+          <div className="tbl-x"><table>
+            <thead>
+              <tr>
+                <th>Instrument</th>
+                <th style={{ textAlign: "right" }}>Period Return</th>
+                <th style={{ textAlign: "right" }}>vs My Portfolio (total)</th>
+                <th style={{ textAlign: "right" }}>vs My Portfolio (price)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ background: "#f0fdf4" }}>
+                <td>
+                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#16a34a", marginRight: 8 }} />
+                  <strong>My Portfolio — Total return (incl. div.)</strong>
+                </td>
+                <td style={{ textAlign: "right", fontWeight: 700 }} className={pTotal != null ? (pTotal >= 0 ? "pos" : "neg") : ""}>{fmtPct(pTotal)}</td>
+                <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
+                <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
+              </tr>
+              <tr style={{ background: "#fffbeb" }}>
+                <td>
+                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: "#f59e0b", marginRight: 8 }} />
+                  My Portfolio — Price return (excl. div.)
+                </td>
+                <td style={{ textAlign: "right", fontWeight: 600 }} className={pPrice != null ? (pPrice >= 0 ? "pos" : "neg") : ""}>{fmtPct(pPrice)}</td>
+                <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
+                <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
+              </tr>
+              {BENCH_DISPLAY.map((bm) => {
+                const bmLoaded = !!benchmarks?.[bm.key as keyof Benchmarks];
+                const bmReturn = lastPt != null && typeof lastPt[bm.key] === "number" ? (lastPt[bm.key] as number) / 100 : null;
+                const dT = pTotal != null && bmReturn != null ? pTotal - bmReturn : null;
+                const dN = pPrice != null && bmReturn != null ? pPrice - bmReturn : null;
+                return (
+                  <tr key={bm.key}>
+                    <td>
+                      <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: bm.color, marginRight: 8 }} />
+                      {bm.label}
+                      <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 6 }}>USD</span>
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }} className={bmReturn != null ? (bmReturn >= 0 ? "pos" : "neg") : ""}>{bmLoaded ? (bmReturn != null ? fmtPct(bmReturn) : "—") : "—"}</td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }} className={dT != null ? (dT >= 0 ? "pos" : "neg") : ""}>
+                      {dT != null ? <>{dT > 0 ? "▲ " : "▼ "}{fmtPct(Math.abs(dT))}</> : "—"}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }} className={dN != null ? (dN >= 0 ? "pos" : "neg") : ""}>
+                      {dN != null ? <>{dN > 0 ? "▲ " : "▼ "}{fmtPct(Math.abs(dN))}</> : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table></div>
+          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 8 }}>
+            Tickers: SPY = S&P 500 · QQQ = Nasdaq 100 · VT = Vanguard Total World · BTC-USD = Bitcoin · Benchmark returns in USD · Portfolio return in {account.currency}
+          </div>
         </div>
-      </div>
+        );
+      })()}
     </div>
   );
 }
