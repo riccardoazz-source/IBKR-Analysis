@@ -1,11 +1,29 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, ReferenceLine } from "recharts";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtNum, fmtDate, fmtMY } from "@/lib/formatters";
 import { COLORS } from "@/lib/constants";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
+
+function YieldBadge({ symbol, isin, currency }: { symbol: string; isin: string; currency: string }) {
+  const [yld, setYld] = useState<number | null | "loading">("loading");
+  useEffect(() => {
+    fetch(`/api/dividend-yield?symbol=${encodeURIComponent(symbol)}&isin=${encodeURIComponent(isin)}&currency=${encodeURIComponent(currency)}`)
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => setYld(typeof d.yield === "number" ? d.yield : null))
+      .catch(() => setYld(null));
+  }, [symbol, isin, currency]);
+
+  if (yld === "loading") return <span style={{ fontSize: 11, color: "#9ca3af" }}>yield…</span>;
+  if (yld == null) return null;
+  return (
+    <span style={{ fontSize: 11, color: "#059669", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 4, padding: "2px 6px", fontWeight: 600 }}>
+      ~{fmtNum(yld * 100, 2)}% yield
+    </span>
+  );
+}
 
 export default function DividendsTab({ data }: { data: ParsedData }) {
   const { dividends, withholding, account, positions } = data;
@@ -194,18 +212,30 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
               const tN_orig = tG_orig + tW_orig;
               const showOrig = divCcy !== account.currency;
               const isOpen = expanded === sk;
+              const pos = posMap[sk];
               return (
                 <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
                   <div
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff" }}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff", gap: 12, flexWrap: "wrap" }}
                     onClick={() => setExpanded(isOpen ? null : sk)}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                       <span style={{ color: COLORS[i % 12], fontWeight: 700 }}>●</span>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{sk}</span>
                       <span className="pill pill-a">{divs.length} payments</span>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    {pos && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          Cost: <strong style={{ color: "#374151" }}>{fmtCcy(pos.costBasis * pos.fxRate, account.currency)}</strong>
+                        </span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          Value: <strong style={{ color: "#374151" }}>{fmtCcy(pos.positionValue * pos.fxRate, account.currency)}</strong>
+                        </span>
+                        <YieldBadge symbol={sk} isin={pos.isin} currency={pos.currency} />
+                      </div>
+                    )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
                       <div style={{ textAlign: "right" }}>
                         {showOrig && (
                           <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{fmtNum(tN_orig, 2)} {divCcy}</div>
