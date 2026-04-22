@@ -19,23 +19,35 @@ interface StockResult {
   ticker: string;
 }
 
-function StockDetail({ symbol, trades, from, to }: {
+function StockDetail({ symbol, isin, currency, trades, to }: {
   symbol: string;
+  isin: string;
+  currency: string;
   trades: ParsedData["trades"];
-  from: Date;
   to: Date;
 }) {
   const [stock, setStock] = useState<StockResult | null | "loading">("loading");
 
+  const firstBuyDate = useMemo(() => {
+    const buys = trades
+      .filter(t => t.symbol === symbol && t.date && t.buySell.toUpperCase().includes("BUY"))
+      .sort((a, b) => +a.date! - +b.date!);
+    return buys[0]?.date ?? null;
+  }, [trades, symbol]);
+
   useEffect(() => {
     setStock("loading");
+    // Start 60 days before first buy to show context
+    const from = firstBuyDate
+      ? new Date(+firstBuyDate - 60 * 86400000)
+      : new Date(to.getTime() - 365 * 86400000);
     const fromStr = from.toISOString().slice(0, 10);
     const toStr = to.toISOString().slice(0, 10);
-    fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&from=${fromStr}&to=${toStr}`)
+    fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&isin=${encodeURIComponent(isin)}&currency=${encodeURIComponent(currency)}&from=${fromStr}&to=${toStr}`)
       .then(r => r.ok ? r.json() as Promise<StockResult> : Promise.reject())
       .then(d => setStock(d))
       .catch(() => setStock(null));
-  }, [symbol, from, to]);
+  }, [symbol, isin, currency, firstBuyDate, to]);
 
   const symbolTrades = useMemo(() =>
     trades
@@ -181,7 +193,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     </th>
   );
 
-  const COL = 11;
+  const COL = 14;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -220,6 +232,9 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
               <tr>
                 <SH k="symbol" label="Symbol" a="left" />
                 <SH k="currency" label="CCY" a="left" />
+                <SH k="position" label="Qty" />
+                <SH k="openPrice" label="Avg Cost/sh" />
+                <SH k="markPrice" label="Price/sh" />
                 <SH k="cE" label={`Cost (${account.currency})`} />
                 <SH k="vE" label={`Value (${account.currency})`} />
                 <SH k="pnlE" label={`P&L (${account.currency})`} />
@@ -243,6 +258,9 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                       {p.isin && <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400 }}>{p.isin}</div>}
                     </td>
                     <td style={{ color: "#9ca3af", fontSize: 11 }}>{p.currency}</td>
+                    <td style={{ textAlign: "right", color: "#6b7280" }}>{fmtNum(p.position, 0)}</td>
+                    <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtNum(p.openPrice, 4)}</td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }} className={p.markPrice >= p.openPrice ? "pos" : "neg"}>{fmtNum(p.markPrice, 4)}</td>
                     <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtCcy(p.cE, account.currency)}</td>
                     <td style={{ textAlign: "right" }}>{fmtCcy(p.vE, account.currency)}</td>
                     <td style={{ textAlign: "right", fontWeight: 600 }} className={p.pnlE >= 0 ? "pos" : "neg"}>{fmtCcy(p.pnlE, account.currency)}</td>
@@ -268,7 +286,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                   {expanded === p.symbol && (
                     <tr>
                       <td colSpan={COL} style={{ padding: 0 }}>
-                        <StockDetail symbol={p.symbol} trades={trades} from={from} to={to} />
+                        <StockDetail symbol={p.symbol} isin={p.isin} currency={p.currency} trades={trades} to={to} />
                       </td>
                     </tr>
                   )}
@@ -277,7 +295,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={2}>PORTFOLIO TOTAL</td>
+                <td colSpan={5}>PORTFOLIO TOTAL</td>
                 <td style={{ textAlign: "right" }}>{fmtCcy(costTotal, account.currency)}</td>
                 <td style={{ textAlign: "right" }}>{fmtCcy(totalPosV, account.currency)}</td>
                 <td style={{ textAlign: "right" }} className={pnlTotal >= 0 ? "pos" : "neg"}>{fmtCcy(pnlTotal, account.currency)}</td>

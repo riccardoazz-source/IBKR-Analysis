@@ -25,6 +25,12 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState("");
   const [period, setPeriod] = useState("MAX");
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const toggleBench = (key: string) => setHidden(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
 
   const { nav, account, deposits, dividends, dailyNav, transfers } = data;
   const from = parseIBDate(account.fromDate) || new Date(new Date().getFullYear(), 0, 1);
@@ -212,9 +218,14 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
             </div>
             {BENCH_DISPLAY.map((bm) => {
               if (!benchmarks?.[bm.key as keyof Benchmarks]) return null;
-              const isDashed = bm.dash !== "";
+              const isHidden = hidden.has(bm.key);
               return (
-                <div key={bm.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  key={bm.key}
+                  onClick={() => toggleBench(bm.key)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", opacity: isHidden ? 0.35 : 1, padding: "3px 8px", borderRadius: 6, border: `1px solid ${isHidden ? "#e5e7eb" : "transparent"}`, userSelect: "none" }}
+                  title={isHidden ? "Click to show" : "Click to hide"}
+                >
                   <svg width="28" height="4">
                     <line x1="0" y1="2" x2="28" y2="2" stroke={bm.color} strokeWidth="2.5" strokeDasharray={bm.dash || undefined}/>
                   </svg>
@@ -247,7 +258,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
               <Line type="monotone" dataKey="portfolio" stroke="#16a34a" strokeWidth={3} dot={false} connectNulls name="portfolio" />
               {/* Benchmarks */}
               {BENCH_DISPLAY.map((bm) =>
-                benchmarks?.[bm.key as keyof Benchmarks] ? (
+                benchmarks?.[bm.key as keyof Benchmarks] && !hidden.has(bm.key) ? (
                   <Line
                     key={bm.key}
                     type="monotone"

@@ -1,57 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
 
-async function fetchSymbol(ticker: string, p1: number, p2: number, headers: Record<string, string>) {
+const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; bot/1.0)", Accept: "application/json" };
+
+async function searchByISIN(isin: string, currency: string): Promise<string | null> {
+  for (const base of ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]) {
+    try {
+      const url = `${base}/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=10&newsCount=0&listsCount=0`;
+      const resp = await fetch(url, { headers: HEADERS });
+      if (!resp.ok) continue;
+      const json = await resp.json() as { quotes?: { symbol: string; quoteType: string; currency?: string }[] };
+      const quotes = (json.quotes || []).filter(q => ["EQUITY", "ETF", "MUTUALFUND", "FUND"].includes(q.quoteType));
+      if (!quotes.length) continue;
+      // Normalize: IBKR uses GBX (pence), Yahoo uses GBp
+      const normCcy = currency === "GBX" ? "GBp" : currency;
+      const exact = quotes.find(q => q.currency === normCcy);
+      return exact?.symbol ?? quotes[0].symbol;
+    } catch { continue; }
+  }
+  return null;
+}
+
+async function fetchPriceSeries(ticker: string, p1: number, p2: number) {
   for (const base of ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]) {
     try {
       const url = `${base}/v8/finance/chart/${ticker}?interval=1d&period1=${p1}&period2=${p2}`;
-      const resp = await fetch(url, { headers, next: { revalidate: 3600 } });
+      const resp = await fetch(url, { headers: HEADERS, next: { revalidate: 3600 } });
       if (!resp.ok) continue;
       const json = await resp.json();
       const result = json?.chart?.result?.[0];
       if (!result?.timestamp?.length) continue;
-      return { result, ticker };
-    } catch {
-      continue;
-    }
+      const timestamps: number[] = result.timestamp;
+      const closes: (number | null)[] = result.indicators.quote[0].close;
+      const stockCurrency: string = result.meta?.currency || "USD";
+      const series = timestamps
+        .map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), price: closes[i] }))
+        .filter((p): p is { date: string; price: number } => p.price != null);
+      if (!series.length) continue;
+      return { series, currency: stockCurrency, ticker };
+    } catch { continue; }
   }
   return null;
 }
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const symbol = sp.get("symbol");
+  const symbol = sp.get("symbol") || "";
+  const isin = sp.get("isin") || "";
+  const currency = sp.get("currency") || "USD";
   const fromParam = sp.get("from");
   const toParam = sp.get("to");
 
-  if (!symbol) return NextResponse.json({ error: "symbol required" }, { status: 400 });
+  if (!symbol && !isin) return NextResponse.json({ error: "symbol or isin required" }, { status: 400 });
 
   const now = new Date();
-  const from = fromParam ? new Date(fromParam) : new Date(now.getFullYear(), 0, 1);
   const to = toParam ? new Date(toParam) : now;
+  const from = fromParam ? new Date(fromParam) : new Date(to.getTime() - 365 * 86400000);
   const p1 = Math.floor(from.getTime() / 1000);
   const p2 = Math.floor(to.getTime() / 1000);
 
-  const headers = { "User-Agent": "Mozilla/5.0 (compatible; bot/1.0)", Accept: "application/json" };
+  // 1. ISIN lookup (most accurate — finds the correct exchange listing)
+  if (isin) {
+    const ticker = await searchByISIN(isin, currency);
+    if (ticker) {
+      const data = await fetchPriceSeries(ticker, p1, p2);
+      if (data) return NextResponse.json(data, {
+        headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
+      });
+    }
+  }
 
-  // Try symbol directly, then common exchange suffixes
-  const candidates = [symbol, `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`];
-
+  // 2. Fallback: try IBKR symbol + common exchange suffixes
+  const candidates = [symbol, `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`].filter(Boolean);
   for (const candidate of candidates) {
-    const hit = await fetchSymbol(candidate, p1, p2, headers);
-    if (!hit) continue;
-
-    const { result, ticker } = hit;
-    const timestamps: number[] = result.timestamp;
-    const closes: (number | null)[] = result.indicators.quote[0].close;
-    const currency: string = result.meta?.currency || "USD";
-
-    const series = timestamps
-      .map((t: number, i: number) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), price: closes[i] }))
-      .filter((p): p is { date: string; price: number } => p.price != null);
-
-    if (!series.length) continue;
-
-    return NextResponse.json({ series, currency, ticker }, {
+    const data = await fetchPriceSeries(candidate, p1, p2);
+    if (data) return NextResponse.json(data, {
       headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
     });
   }
