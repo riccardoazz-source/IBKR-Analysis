@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Stat from "@/components/Stat";
-import { fmtCcy, fmtNum, fmtDate } from "@/lib/formatters";
+import { fmtCcy, fmtNum, fmtDate, fmtPct } from "@/lib/formatters";
 import { sym } from "@/lib/formatters";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
