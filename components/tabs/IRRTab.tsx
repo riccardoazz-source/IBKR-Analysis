@@ -244,6 +244,30 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     });
   }, [posRows, filter, sortKey, sortDir]);
 
+  const openPosXirr = useMemo(() => {
+    const flows: { date: Date; amount: number }[] = [];
+    posRows.forEach(p => {
+      const symT = trades.filter(t => t.symbol === p.symbol);
+      if (symT.length === 0) {
+        if (p.costBasis > 0) flows.push({ date: from, amount: -p.costBasis * p.fxRate });
+      } else {
+        let netBought = 0;
+        symT.forEach(t => { netBought += t.quantity || 0; });
+        const atStart = p.position - netBought;
+        if (atStart > 0.001 && p.costBasis > 0 && p.position > 0)
+          flows.push({ date: from, amount: -(atStart / p.position) * p.costBasis * p.fxRate });
+        symT.forEach(t => { if (t.date) flows.push({ date: t.date, amount: (t.proceeds + t.commission) * t.fxRate }); });
+      }
+      dividends.filter(d => d.symbol === p.symbol && d.date).forEach(d => {
+        flows.push({ date: d.date!, amount: d.amount * d.fxRate });
+      });
+      flows.push({ date: to, amount: p.positionValue * p.fxRate });
+    });
+    flows.sort((a, b) => +a.date - +b.date);
+    if (!flows.some(f => f.amount < 0) || !flows.some(f => f.amount > 0) || flows.length < 2) return null;
+    return xirr(flows);
+  }, [posRows, trades, dividends, from, to]);
+
   const SH = ({ k, label, a = "right" }: { k: string; label: string; a?: string }) => (
     <th style={{ textAlign: a as "left" | "right", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
       onClick={() => handleSort(k)}>
@@ -259,7 +283,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
         <Stat label="Starting Capital" value={fmtCcy(startV, account.currency)} sub="opening NAV + transfers" />
         <Stat label="Current NAV" value={fmtCcy(nav.endingValue, account.currency)} />
         <Stat label="Total Return (incl. div.)" value={fmtPct(twr)} color={twr != null ? (twr >= 0 ? "#16a34a" : "#dc2626") : undefined} sub="Time-weighted · same as chart" />
-        <Stat label="Portfolio XIRR" value={portIrr != null ? fmtPct(portIrr) : "—"} sub={irrNote || `money-weighted · annualised · ${Math.round(days)}d`} color={portIrr != null ? (portIrr >= 0 ? "#16a34a" : "#dc2626") : undefined} size="lg" />
+        <Stat label="Portfolio XIRR (all)" value={portIrr != null ? fmtPct(portIrr) : "—"} sub={irrNote || `open + closed · NAV-based · ${Math.round(days)}d`} color={portIrr != null ? (portIrr >= 0 ? "#16a34a" : "#dc2626") : undefined} size="lg" />
       </div>
       <div className="g2">
         <Stat label="Total dividends received" value={fmtCcy(totalDivs, account.currency)} color="#d97706" sub={`${dividends.length} payments`} />
@@ -369,8 +393,8 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                   <strong>{fmtPct(costTotal > 0 ? (pnlTotal + totalDivs) / costTotal : null)}</strong>
                 </td>
                 <td style={{ textAlign: "right" }}>
-                  <strong className={portIrr != null ? (portIrr >= 0 ? "pos" : "neg") : "muted"}>
-                    {portIrr != null ? fmtPct(portIrr) : "—"}
+                  <strong className={openPosXirr != null ? (openPosXirr >= 0 ? "pos" : "neg") : "muted"}>
+                    {openPosXirr != null ? fmtPct(openPosXirr) : "—"}
                   </strong>
                 </td>
               </tr>
