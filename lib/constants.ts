@@ -56,6 +56,9 @@ tfoot td{padding:8px 10px;font-size:13px;font-variant-numeric:tabular-nums;borde
   .g-main{grid-template-columns:1fr;}
   .content-pad{padding:10px!important;}
   .tab-btn{font-size:11px!important;padding:9px 10px!important;}
+  .card{padding:12px;}
+  .stat-val-lg{font-size:18px!important;}
+  .stat-val-md{font-size:15px!important;}
 }
 @media(max-width:380px){
   .g3{grid-template-columns:1fr;}

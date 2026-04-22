@@ -216,16 +216,28 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
               return (
                 <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
                   <div
-                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff", gap: 12, flexWrap: "wrap" }}
+                    style={{ padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff" }}
                     onClick={() => setExpanded(isOpen ? null : sk)}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                      <span style={{ color: COLORS[i % 12], fontWeight: 700 }}>●</span>
-                      <span style={{ fontWeight: 700, fontSize: 14 }}>{sk}</span>
-                      <span className="pill pill-a">{divs.length} payments</span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
+                        <span style={{ color: COLORS[i % 12], fontWeight: 700, flexShrink: 0 }}>●</span>
+                        <span style={{ fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{sk}</span>
+                        <span className="pill pill-a" style={{ flexShrink: 0 }}>{divs.length} payments</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        <div style={{ textAlign: "right" }}>
+                          {showOrig && (
+                            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{fmtNum(tN_orig, 2)} {divCcy}</div>
+                          )}
+                          <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>{fmtCcy(tN, account.currency)}</div>
+                          {tW !== 0 && <div style={{ fontSize: 11, color: "#dc2626" }}>({fmtCcy(tG, account.currency)} gross)</div>}
+                        </div>
+                        <span style={{ color: "#9ca3af", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
+                      </div>
                     </div>
                     {pos && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 5 }}>
                         <span style={{ fontSize: 12, color: "#6b7280" }}>
                           Cost: <strong style={{ color: "#374151" }}>{fmtNum(pos.costBasis, 2)} {pos.currency}</strong>
                         </span>
@@ -235,16 +247,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                         <YieldBadge symbol={sk} isin={pos.isin} currency={pos.currency} />
                       </div>
                     )}
-                    <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
-                      <div style={{ textAlign: "right" }}>
-                        {showOrig && (
-                          <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{fmtNum(tN_orig, 2)} {divCcy}</div>
-                        )}
-                        <div style={{ fontSize: 15, fontWeight: 700, color: "#16a34a" }}>{fmtCcy(tN, account.currency)}</div>
-                        {tW !== 0 && <div style={{ fontSize: 11, color: "#dc2626" }}>({fmtCcy(tG, account.currency)} gross)</div>}
-                      </div>
-                      <span style={{ color: "#9ca3af", fontSize: 12 }}>{isOpen ? "▲" : "▼"}</span>
-                    </div>
                   </div>
                   {isOpen && (() => {
                     const sortedDivs = [...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || ""));
