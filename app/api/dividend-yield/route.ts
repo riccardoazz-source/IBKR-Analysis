@@ -20,15 +20,23 @@ async function searchByISIN(isin: string, currency: string): Promise<string | nu
 }
 
 async function fetchDividendYield(ticker: string): Promise<number | null> {
+  const now = Math.floor(Date.now() / 1000);
+  const oneYearAgo = now - 366 * 86400;
   for (const base of ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]) {
     try {
-      const url = `${base}/v10/finance/quoteSummary/${encodeURIComponent(ticker)}?modules=summaryDetail`;
+      const url = `${base}/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1mo&period1=${oneYearAgo}&period2=${now}&events=dividends`;
       const resp = await fetch(url, { headers: HEADERS, next: { revalidate: 86400 } });
       if (!resp.ok) continue;
       const json = await resp.json();
-      const sd = json?.quoteSummary?.result?.[0]?.summaryDetail;
-      const y = sd?.trailingAnnualDividendYield?.raw ?? sd?.dividendYield?.raw ?? null;
-      if (y != null && isFinite(y) && y > 0) return y;
+      const result = json?.chart?.result?.[0];
+      if (!result) continue;
+      const price: number | undefined = result.meta?.regularMarketPrice;
+      if (!price || price <= 0) continue;
+      const divEvents = result.events?.dividends as Record<string, { amount: number }> | undefined;
+      if (!divEvents) continue;
+      const annualDiv = Object.values(divEvents).reduce((s, d) => s + (d.amount || 0), 0);
+      if (annualDiv <= 0) continue;
+      return annualDiv / price;
     } catch { continue; }
   }
   return null;
@@ -42,21 +50,20 @@ export async function GET(req: NextRequest) {
 
   if (!symbol && !isin) return NextResponse.json({ error: "symbol or isin required" }, { status: 400 });
 
-  let ticker: string | null = null;
-  if (isin) ticker = await searchByISIN(isin, currency);
-  if (!ticker) {
-    const candidates = [symbol, `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`].filter(Boolean);
-    for (const c of candidates) {
-      const y = await fetchDividendYield(c);
-      if (y != null) return NextResponse.json({ ticker: c, yield: y }, {
-        headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=172800" },
-      });
+  const CACHE = { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=172800" } };
+
+  if (isin) {
+    const ticker = await searchByISIN(isin, currency);
+    if (ticker) {
+      const y = await fetchDividendYield(ticker);
+      if (y != null) return NextResponse.json({ ticker, yield: y }, CACHE);
     }
-    return NextResponse.json({ ticker: null, yield: null });
   }
 
-  const y = await fetchDividendYield(ticker);
-  return NextResponse.json({ ticker, yield: y }, {
-    headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=172800" },
-  });
+  const candidates = [symbol, `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`].filter(Boolean);
+  for (const c of candidates) {
+    const y = await fetchDividendYield(c);
+    if (y != null) return NextResponse.json({ ticker: c, yield: y }, CACHE);
+  }
+  return NextResponse.json({ ticker: null, yield: null });
 }

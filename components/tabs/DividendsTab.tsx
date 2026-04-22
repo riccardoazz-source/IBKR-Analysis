@@ -227,10 +227,10 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     {pos && (
                       <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Cost: <strong style={{ color: "#374151" }}>{fmtCcy(pos.costBasis * pos.fxRate, account.currency)}</strong>
+                          Cost: <strong style={{ color: "#374151" }}>{fmtNum(pos.costBasis, 2)} {pos.currency}</strong>
                         </span>
                         <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Value: <strong style={{ color: "#374151" }}>{fmtCcy(pos.positionValue * pos.fxRate, account.currency)}</strong>
+                          Value: <strong style={{ color: "#374151" }}>{fmtNum(pos.positionValue, 2)} {pos.currency}</strong>
                         </span>
                         <YieldBadge symbol={sk} isin={pos.isin} currency={pos.currency} />
                       </div>
