@@ -5,7 +5,7 @@ import { fmtCcy, fmtNum, fmtPct, fmtDate } from "@/lib/formatters";
 import { computeTWR, posXirr } from "@/lib/math";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 interface Props {
   data: ParsedData;
@@ -57,8 +57,41 @@ function StockDetail({ symbol, isin, currency, trades, to }: {
     [trades, symbol]
   );
 
-  const buyDates = useMemo(() => new Set(symbolTrades.filter(t => t.buySell.toUpperCase().includes("BUY")).map(t => t.dateStr)), [symbolTrades]);
-  const sellDates = useMemo(() => new Set(symbolTrades.filter(t => t.buySell.toUpperCase().includes("SELL")).map(t => t.dateStr)), [symbolTrades]);
+  const seriesWithTrades = useMemo(() => {
+    if (!stock || stock === "loading") return [];
+    const tradeMap = new Map<string, { buys: number; sells: number }>();
+    symbolTrades.forEach(t => {
+      const entry = tradeMap.get(t.dateStr) ?? { buys: 0, sells: 0 };
+      if (t.buySell.toUpperCase().includes("BUY")) entry.buys += 1;
+      else entry.sells += 1;
+      tradeMap.set(t.dateStr, entry);
+    });
+    return stock.series.map(pt => ({
+      ...pt,
+      buys: tradeMap.get(pt.date)?.buys ?? 0,
+      sells: tradeMap.get(pt.date)?.sells ?? 0,
+    }));
+  }, [stock, symbolTrades]);
+
+  const tradeDot = (props: { cx?: number; cy?: number; payload?: { date: string; price: number; buys: number; sells: number } }) => {
+    const { cx, cy, payload } = props;
+    if (!payload || (payload.buys === 0 && payload.sells === 0)) return null;
+    const hasBuy = payload.buys > 0;
+    const hasSell = payload.sells > 0;
+    const color = hasBuy && hasSell ? "#f59e0b" : hasBuy ? "#16a34a" : "#dc2626";
+    const label = hasBuy && hasSell
+      ? `B${payload.buys > 1 ? `×${payload.buys}` : ""}+S${payload.sells > 1 ? `×${payload.sells}` : ""}`
+      : hasBuy
+        ? `B${payload.buys > 1 ? `×${payload.buys}` : ""}`
+        : `S${payload.sells > 1 ? `×${payload.sells}` : ""}`;
+    const r = 6;
+    return (
+      <g key={`dot-${payload.date}`}>
+        <circle cx={cx} cy={cy} r={r} fill={color} stroke="#fff" strokeWidth={1.5} />
+        <text x={cx} y={(cy ?? 0) - r - 3} textAnchor="middle" fontSize={8} fill={color} fontWeight={700}>{label}</text>
+      </g>
+    );
+  };
 
   return (
     <div style={{ padding: "12px 16px", background: "#f9fafb", borderTop: "1px solid #f3f4f6" }}>
@@ -70,26 +103,18 @@ function StockDetail({ symbol, isin, currency, trades, to }: {
             Price history — {stock.ticker} ({stock.currency})
           </div>
           <ResponsiveContainer width="100%" height={160}>
-            <LineChart data={stock.series} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+            <LineChart data={seriesWithTrades} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55}
                 tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [`${fmtNum(v, 2)} ${stock.currency}`, "Price"]} />
-              {[...buyDates].map(d => (
-                <ReferenceLine key={`b${d}`} x={d} stroke="#16a34a" strokeWidth={2} strokeDasharray="4 2"
-                  label={{ value: "B", position: "top", fontSize: 8, fill: "#16a34a" }} />
-              ))}
-              {[...sellDates].map(d => (
-                <ReferenceLine key={`s${d}`} x={d} stroke="#dc2626" strokeWidth={2} strokeDasharray="4 2"
-                  label={{ value: "S", position: "top", fontSize: 8, fill: "#dc2626" }} />
-              ))}
-              <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={2} dot={false} connectNulls />
+              <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={2} dot={tradeDot as never} connectNulls />
             </LineChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>
-            ▮ Green = buy · ▮ Red = sell · source: Yahoo Finance ({stock.ticker})
+            ● Green = buy · ● Red = sell · ● Orange = buy+sell same day · source: Yahoo Finance ({stock.ticker})
           </div>
         </>
       ) : (
