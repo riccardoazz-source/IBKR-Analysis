@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, Fragment } from "react";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtNum, fmtPct, fmtDate } from "@/lib/formatters";
-import { computeTWR, posXirr } from "@/lib/math";
+import { computeTWR, posXirr, xirr } from "@/lib/math";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -165,6 +165,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
   const [sortDir, setSortDir] = useState(-1);
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [expandedClosed, setExpandedClosed] = useState<string | null>(null);
 
   const { twr } = useMemo(
     () => computeTWR(dailyNav, nav.startingValue || 0, deposits, dividends, transfers),
@@ -193,6 +194,38 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     const pIrr = posXirr(p, trades, dividends, from, to);
     return { ...p, cE, vE, pnlE, pnlPct, dE, gainE, totRetPct, pIrr };
   }), [positions, trades, dividends, from, to, divsBySymbol]);
+
+  const closedRows = useMemo(() => {
+    const openSymbols = new Set(positions.map(p => p.symbol));
+    const bySymbol: Record<string, typeof trades> = {};
+    trades.forEach(t => {
+      if (!t.symbol || openSymbols.has(t.symbol)) return;
+      (bySymbol[t.symbol] ??= []).push(t);
+    });
+    return Object.entries(bySymbol).flatMap(([sym, symTrades]) => {
+      const buyTrades = symTrades.filter(t => t.buySell.toUpperCase().includes("BUY"));
+      if (!buyTrades.length) return [];
+      const costEur = buyTrades.reduce((s, t) => s + -(t.proceeds + t.commission) * t.fxRate, 0);
+      if (costEur <= 0) return [];
+      const pnlEur = symTrades.reduce((s, t) => s + (t.proceeds + t.commission) * t.fxRate, 0);
+      const symDivs = dividends.filter(d => d.symbol === sym && d.date);
+      const divsEur = symDivs.reduce((s, d) => s + d.amount * d.fxRate, 0);
+      const totalGainEur = pnlEur + divsEur;
+      const pnlPct = costEur > 0 ? pnlEur / costEur : null;
+      const totalReturnPct = costEur > 0 ? totalGainEur / costEur : null;
+      const ms = symTrades.filter(t => t.date).map(t => +t.date!);
+      const firstDate = ms.length ? new Date(Math.min(...ms)) : null;
+      const lastDate = ms.length ? new Date(Math.max(...ms)) : null;
+      const holdingDays = firstDate && lastDate && +firstDate !== +lastDate
+        ? Math.round((+lastDate - +firstDate) / 86400000) : null;
+      const flows = [
+        ...symTrades.filter(t => t.date).map(t => ({ date: t.date!, amount: (t.proceeds + t.commission) * t.fxRate })),
+        ...symDivs.filter(d => d.date).map(d => ({ date: d.date!, amount: d.amount * d.fxRate })),
+      ].sort((a, b) => +a.date - +b.date);
+      const irrVal = flows.some(f => f.amount < 0) && flows.some(f => f.amount > 0) ? xirr(flows) : null;
+      return [{ sym, description: symTrades[0]?.description ?? "", currency: symTrades[0]?.currency ?? account.currency, costEur, pnlEur, divsEur, totalGainEur, pnlPct, totalReturnPct, firstDate, lastDate, holdingDays, irrVal, trades: symTrades, divs: symDivs }];
+    }).sort((a, b) => b.totalGainEur - a.totalGainEur);
+  }, [positions, trades, dividends, account.currency]);
 
   const handleSort = (k: string) => {
     if (k === sortKey) setSortDir(d => -d);
@@ -348,6 +381,117 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
           All values in {account.currency}. Click any row to see price history &amp; trades. XIRR: annualised money-weighted.
         </div>
       </div>
+
+      {closedRows.length > 0 && (
+        <div className="card">
+          <div className="st" style={{ marginBottom: 10 }}>Closed positions · {closedRows.length} {closedRows.length === 1 ? "symbol" : "symbols"}</div>
+          <div className="tbl-x">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Symbol</th>
+                  <th style={{ textAlign: "left" }}>Period</th>
+                  <th style={{ textAlign: "right" }}>Cost ({account.currency})</th>
+                  <th style={{ textAlign: "right" }}>P&amp;L ({account.currency})</th>
+                  <th style={{ textAlign: "right" }}>P&amp;L %</th>
+                  <th style={{ textAlign: "right" }}>Div. ({account.currency})</th>
+                  <th style={{ textAlign: "right" }}>Total Gain ({account.currency})</th>
+                  <th style={{ textAlign: "right" }}>Total Return</th>
+                  <th style={{ textAlign: "right" }}>XIRR (ann.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {closedRows.map(r => (
+                  <Fragment key={r.sym}>
+                    <tr
+                      style={{ cursor: "pointer", background: expandedClosed === r.sym ? "#f0f9ff" : undefined }}
+                      onClick={() => setExpandedClosed(expandedClosed === r.sym ? null : r.sym)}
+                    >
+                      <td>
+                        <strong>{r.sym}</strong>
+                        {r.description && <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400 }}>{r.description}</div>}
+                      </td>
+                      <td style={{ color: "#9ca3af", fontSize: 11, whiteSpace: "nowrap" }}>
+                        {fmtDate(r.firstDate)}{r.holdingDays != null ? ` · ${r.holdingDays}d` : ""}
+                      </td>
+                      <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtCcy(r.costEur, account.currency)}</td>
+                      <td style={{ textAlign: "right", fontWeight: 600 }} className={r.pnlEur >= 0 ? "pos" : "neg"}>{fmtCcy(r.pnlEur, account.currency)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {r.pnlPct != null ? <span className={r.pnlPct >= 0 ? "pos" : "neg"} style={{ fontWeight: 600 }}>{fmtPct(r.pnlPct)}</span> : <span className="muted">—</span>}
+                      </td>
+                      <td style={{ textAlign: "right" }} className={r.divsEur > 0 ? "pos" : "muted"}>{r.divsEur ? fmtCcy(r.divsEur, account.currency) : "—"}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }} className={r.totalGainEur >= 0 ? "pos" : "neg"}>{fmtCcy(r.totalGainEur, account.currency)}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {r.totalReturnPct != null ? <span className={r.totalReturnPct >= 0 ? "pos" : "neg"} style={{ fontWeight: 700 }}>{fmtPct(r.totalReturnPct)}</span> : <span className="muted">—</span>}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {r.irrVal != null ? <span className={r.irrVal >= 0 ? "pos" : "neg"} style={{ fontWeight: 700 }}>{fmtPct(r.irrVal)}</span> : <span className="muted">—</span>}
+                      </td>
+                    </tr>
+                    {expandedClosed === r.sym && (
+                      <tr>
+                        <td colSpan={9} style={{ padding: 0 }}>
+                          <div style={{ padding: "12px 16px", background: "#f9fafb", borderTop: "1px solid #f3f4f6" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Trades</div>
+                            <div className="tbl-x"><table>
+                              <thead><tr>
+                                <th>Date</th><th>B/S</th>
+                                <th style={{ textAlign: "right" }}>Qty</th>
+                                <th style={{ textAlign: "right" }}>Price</th>
+                                <th>CCY</th>
+                                <th style={{ textAlign: "right" }}>Proceeds</th>
+                                <th style={{ textAlign: "right" }}>Commission</th>
+                                <th style={{ textAlign: "right" }}>Realized P&amp;L</th>
+                              </tr></thead>
+                              <tbody>
+                                {[...r.trades].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || "")).map((t, i) => (
+                                  <tr key={i}>
+                                    <td style={{ color: "#9ca3af" }}>{fmtDate(t.date)}</td>
+                                    <td><span className={t.buySell.includes("BUY") ? "pill pill-g" : "pill pill-r"} style={{ fontSize: 10 }}>{t.buySell}</span></td>
+                                    <td style={{ textAlign: "right" }}>{fmtNum(Math.abs(t.quantity), 0)}</td>
+                                    <td style={{ textAlign: "right", color: "#6b7280" }}>{fmtNum(t.tradePrice, 4)}</td>
+                                    <td style={{ color: "#9ca3af" }}>{t.currency}</td>
+                                    <td style={{ textAlign: "right", fontWeight: 600 }} className={t.proceeds >= 0 ? "pos" : "neg"}>{fmtNum(t.proceeds, 2)}</td>
+                                    <td style={{ textAlign: "right", color: "#dc2626" }}>{fmtNum(t.commission, 2)}</td>
+                                    <td style={{ textAlign: "right", fontWeight: 600 }} className={t.fifoPnlRealized >= 0 ? "pos" : "neg"}>{t.fifoPnlRealized !== 0 ? fmtNum(t.fifoPnlRealized, 2) : "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table></div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+              {closedRows.length > 1 && (() => {
+                const tCost = closedRows.reduce((s, r) => s + r.costEur, 0);
+                const tPnl = closedRows.reduce((s, r) => s + r.pnlEur, 0);
+                const tDivs = closedRows.reduce((s, r) => s + r.divsEur, 0);
+                const tGain = closedRows.reduce((s, r) => s + r.totalGainEur, 0);
+                return (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2}>TOTAL</td>
+                      <td style={{ textAlign: "right" }}>{fmtCcy(tCost, account.currency)}</td>
+                      <td style={{ textAlign: "right" }} className={tPnl >= 0 ? "pos" : "neg"}>{fmtCcy(tPnl, account.currency)}</td>
+                      <td style={{ textAlign: "right" }} className={tPnl >= 0 ? "pos" : "neg"}><strong>{fmtPct(tCost > 0 ? tPnl / tCost : null)}</strong></td>
+                      <td style={{ textAlign: "right" }} className="pos">{fmtCcy(tDivs, account.currency)}</td>
+                      <td style={{ textAlign: "right" }} className={tGain >= 0 ? "pos" : "neg"}>{fmtCcy(tGain, account.currency)}</td>
+                      <td style={{ textAlign: "right" }} className={tGain >= 0 ? "pos" : "neg"}><strong>{fmtPct(tCost > 0 ? tGain / tCost : null)}</strong></td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                );
+              })()}
+            </table>
+          </div>
+          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 8 }}>
+            Positions fully closed during the report period. XIRR annualised from first buy to last sell.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
