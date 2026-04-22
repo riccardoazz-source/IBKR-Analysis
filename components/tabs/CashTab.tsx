@@ -73,8 +73,12 @@ export default function CashTab({ data }: { data: ParsedData }) {
 
   const filteredTotal = filteredCashRows.reduce((s, r) => s + r.amount, 0);
 
+  const availableCcys = Object.values(cashByCcy || {}).filter(b => b.endingCash > 0);
+  const availableCash = availableCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
+
   const reconComputed =
     capitalBase +
+    availableCash +
     (nav.dividends || 0) +
     (nav.interest || 0) +
     (nav.withholdingTax || 0) +
@@ -86,8 +90,6 @@ export default function CashTab({ data }: { data: ParsedData }) {
     (nav.other || 0);
   const reconDiff = nav.endingValue - reconComputed;
 
-  const availableCcys = Object.values(cashByCcy || {}).filter(b => b.endingCash > 0);
-  const availableCash = availableCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
   const availableSub = availableCcys.length === 0
     ? "fully margined / no free cash"
     : availableCcys.map(b => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ");
@@ -164,10 +166,16 @@ export default function CashTab({ data }: { data: ParsedData }) {
               <span style={{ fontWeight: 500 }} className={(v as number) >= 0 ? "pos" : "neg"}>{fmtCcy(v as number, account.currency)}</span>
             </div>
           ))}
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", fontSize: 13, background: "#eff6ff", borderRadius: 5, margin: "3px 0 8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", fontSize: 13, background: "#eff6ff", borderRadius: 5, margin: "3px 0 4px" }}>
             <span style={{ fontWeight: 700, color: "#2563eb" }}>Capital base</span>
             <span style={{ fontWeight: 700, color: "#2563eb" }}>{fmtCcy(capitalBase, account.currency)}</span>
           </div>
+          {availableCash > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb", marginBottom: 4 }}>
+              <span style={{ color: "#6b7280" }}>Available cash{availableCcys.length > 1 ? ` (${availableCcys.map(b => b.currency).join(", ")})` : availableCcys.length === 1 ? ` (${availableCcys[0].currency})` : ""}</span>
+              <span className="pos" style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
+            </div>
+          )}
 
           <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: ".05em", padding: "4px 0 3px" }}>▲ Income</div>
           {[["Dividends received", nav.dividends], ["Interest received", nav.interest > 0 ? nav.interest : 0]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
