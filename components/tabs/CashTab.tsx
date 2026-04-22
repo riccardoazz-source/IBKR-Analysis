@@ -86,10 +86,16 @@ export default function CashTab({ data }: { data: ParsedData }) {
     (nav.other || 0);
   const reconDiff = nav.endingValue - reconComputed;
 
+  const availableCcys = Object.values(cashByCcy || {}).filter(b => b.endingCash > 0);
+  const availableCash = availableCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
+  const availableSub = availableCcys.length === 0
+    ? "fully margined / no free cash"
+    : availableCcys.map(b => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ");
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="g3">
-        <Stat label="NAV" value={fmtCcy(nav.endingValue, account.currency)} size="lg" />
+        <Stat label="Available Cash" value={fmtCcy(availableCash, account.currency)} sub={availableSub} size="lg" color={availableCash > 0 ? "#16a34a" : "#9ca3af"} />
         <Stat label="Net Cash In / Out" value={fmtCcy(totalNetCash, account.currency)} sub={`${deposits.filter((d) => d.amount > 0).length} deposits · ${deposits.filter((d) => d.amount < 0).length} withdrawals · ${(transfers || []).length} transfers`} />
         <Stat label="Capital Base" value={fmtCcy(capitalBase, account.currency)} sub="starting NAV + all cash in" />
       </div>
