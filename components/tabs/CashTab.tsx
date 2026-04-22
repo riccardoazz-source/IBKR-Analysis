@@ -218,7 +218,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
           <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", fontSize: 14, background: "#eff6ff", borderRadius: 5, marginTop: 4 }}>
             <span style={{ fontWeight: 700, color: "#374151" }}>Total return</span>
             <span style={{ fontWeight: 700 }} className={profitLoss >= 0 ? "pos" : "neg"}>
-              {capitalBase > 0 ? (profitLoss >= 0 ? "+" : "") + (profitLoss / capitalBase * 100).toFixed(2) + "%" : "—"}
+              {capitalBase > 0 ? fmtPct(profitLoss / capitalBase) : "—"}
             </span>
           </div>
         </div>
