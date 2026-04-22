@@ -96,6 +96,7 @@ export function parseFlexXML(xml: string): ParsedData {
 
   const positions: Position[] = [...lastPos.querySelectorAll("OpenPosition")].map((el) => ({
     symbol: el.getAttribute("symbol") || "",
+    isin: el.getAttribute("isin") || "",
     description: el.getAttribute("description") || "",
     assetClass: el.getAttribute("assetCategory") || "",
     subCategory: el.getAttribute("subCategory") || "",

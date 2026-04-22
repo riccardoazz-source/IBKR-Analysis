@@ -6,7 +6,6 @@ import { xirr } from "@/lib/math";
 import { parseFlexXML, parseIBDate } from "@/lib/parser";
 import { supabase } from "@/lib/supabase";
 import OverviewTab from "@/components/tabs/OverviewTab";
-import PositionsTab from "@/components/tabs/PositionsTab";
 import IRRTab from "@/components/tabs/IRRTab";
 import CashTab from "@/components/tabs/CashTab";
 import TransactionsTab from "@/components/tabs/TransactionsTab";
@@ -14,10 +13,10 @@ import BenchmarksTab from "@/components/tabs/BenchmarksTab";
 import DividendsTab from "@/components/tabs/DividendsTab";
 import type { ParsedData, Benchmarks, StoredPortfolio } from "@/lib/types";
 
-const TABS = ["overview", "positions", "irr", "cash", "transactions", "benchmarks", "dividends"] as const;
+const TABS = ["overview", "irr", "cash", "transactions", "benchmarks", "dividends"] as const;
 type Tab = typeof TABS[number];
 const TAB_LABELS: Record<Tab, string> = {
-  overview: "Overview", positions: "Positions", irr: "Returns & IRR",
+  overview: "Overview", irr: "Returns & IRR",
   cash: "Cash", transactions: "Transactions", benchmarks: "Benchmarks", dividends: "Dividends",
 };
 
@@ -480,7 +479,6 @@ export default function IBKRApp() {
       {/* Content */}
       <div className="content-pad" style={{ padding: 16 }}>
         {tab === "overview"      && <OverviewTab data={data} />}
-        {tab === "positions"     && <PositionsTab data={data} />}
         {tab === "irr"           && <IRRTab data={data} portIrr={portIrr} irrNote={irrNote} />}
         {tab === "cash"          && <CashTab data={data} />}
         {tab === "transactions"  && <TransactionsTab data={data} />}

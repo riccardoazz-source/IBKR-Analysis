@@ -1,5 +1,6 @@
 export interface Position {
   symbol: string;
+  isin: string;
   description: string;
   assetClass: string;
   subCategory: string;
