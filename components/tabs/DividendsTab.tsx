@@ -37,9 +37,9 @@ function longTs(ts: number) {
   return `${String(d.getUTCDate()).padStart(2,"0")} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMax, syncId }: {
+function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMax, divTimestamps }: {
   symbol: string; isin: string; currency: string; from: string; to: string;
-  domainMin: number; domainMax: number; syncId: string;
+  domainMin: number; domainMax: number; divTimestamps: number[];
 }) {
   const [stock, setStock] = useState<PriceResult | null | "loading">("loading");
   useEffect(() => {
@@ -52,8 +52,23 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
   }, [symbol, isin, currency, from, to]);
 
   const tsSeries = stock && stock !== "loading"
-    ? stock.series.map(pt => ({ ts: new Date(pt.date).getTime(), price: pt.price }))
+    ? stock.series.map(pt => {
+        const ts = new Date(pt.date).getTime();
+        const isDiv = divTimestamps.some(dt => Math.abs(dt - ts) < 36 * 3600000);
+        return { ts, price: pt.price, isDiv };
+      })
     : [];
+
+  const divDot = (props: { cx?: number; cy?: number; payload?: { ts: number; isDiv?: boolean } }) => {
+    const { cx, cy, payload } = props;
+    if (!payload?.isDiv) return null;
+    return (
+      <g key={`d-${payload.ts}`}>
+        <circle cx={cx} cy={cy} r={5} fill="#16a34a" stroke="#fff" strokeWidth={1.5} />
+        <text x={cx} y={(cy ?? 0) - 8} textAnchor="middle" fontSize={8} fill="#16a34a" fontWeight={700}>D</text>
+      </g>
+    );
+  };
 
   return (
     <div style={{ padding: "14px 16px 0" }}>
@@ -63,17 +78,20 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
       {stock === "loading" ? (
         <div style={{ fontSize: 11, color: "#9ca3af", padding: "8px 0" }}>Loading price data…</div>
       ) : stock && tsSeries.length > 0 ? (
-        <ResponsiveContainer width="100%" height={150}>
-          <LineChart data={tsSeries} syncId={syncId} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-            <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
-            <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
-              formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
-              labelFormatter={(ts: number) => longTs(ts)} />
-            <Line type="monotone" dataKey="price" stroke="#374151" strokeWidth={2} dot={false} connectNulls />
-          </LineChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={150}>
+            <LineChart data={tsSeries} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+              <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
+              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
+                formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
+                labelFormatter={(ts: number) => longTs(ts)} />
+              <Line type="monotone" dataKey="price" stroke="#374151" strokeWidth={2} dot={divDot as never} connectNulls />
+            </LineChart>
+          </ResponsiveContainer>
+          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>● Green = dividend payment date</div>
+        </>
       ) : (
         <div style={{ fontSize: 11, color: "#9ca3af", padding: "6px 0" }}>No price data found for &ldquo;{symbol}&rdquo;</div>
       )}
@@ -307,7 +325,10 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     const reportDate = parseIBDate(account.toDate) ?? new Date();
                     const domainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
                     const domainMax = +reportDate;
-                    const syncId = `div-${sk}`;
+                    const divTimestamps = sortedDivs.map(d => {
+                      const dt = d.date ?? parseIBDate(d.dateTime);
+                      return dt ? +dt : 0;
+                    }).filter(ts => ts > 0);
 
                     /* per-share series with timestamps */
                     const perShareByDate: Record<string, { label: string; ts: number; perShare: number; currency: string }> = {};
@@ -367,7 +388,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           to={reportDate.toISOString().slice(0, 10)}
                           domainMin={domainMin}
                           domainMax={domainMax}
-                          syncId={syncId}
+                          divTimestamps={divTimestamps}
                         />
 
                         {/* 2. Dividend per share over time */}
@@ -377,7 +398,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               Dividend per share over time ({perShareSeries[0].currency}/share)
                             </div>
                             <ResponsiveContainer width="100%" height={110}>
-                              <LineChart data={perShareSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                              <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                                 <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
@@ -398,7 +419,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               Dividend amount over time ({amountCcy})
                             </div>
                             <ResponsiveContainer width="100%" height={110}>
-                              <LineChart data={amountSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                              <LineChart data={amountSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                                 <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
@@ -417,7 +438,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               Shares held at payment date
                             </div>
                             <ResponsiveContainer width="100%" height={90}>
-                              <LineChart data={sharesSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                              <LineChart data={sharesSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                                 <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
