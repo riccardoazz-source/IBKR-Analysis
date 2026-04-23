@@ -100,7 +100,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
 }
 
 export default function DividendsTab({ data }: { data: ParsedData }) {
-  const { dividends, withholding, account, positions, trades } = data;
+  const { dividends, withholding, account, positions } = data;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [divFilter, setDivFilter] = useState("all");
 
@@ -360,21 +360,16 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     const amountSeries = Object.values(amountByDate).sort((a, b) => a.ts - b.ts).map(r => ({ ...r, amount: +r.amount.toFixed(4) }));
                     const avgAmount = amountSeries.reduce((s, r) => s + r.amount, 0) / amountSeries.length;
 
-                    /* shares held at each dividend date — cumulative quantity from trades */
-                    const symTrades = trades
-                      .filter(t => t.symbol === sk && t.date)
-                      .sort((a, b) => +a.date! - +b.date!);
+                    /* shares on which dividend was received = total amount ÷ per-share rate */
                     const sharesMap: Record<number, { ts: number; label: string; qty: number }> = {};
-                    sortedDivs.forEach(d => {
-                      const dt = d.date ?? parseIBDate(d.dateTime);
-                      if (!dt) return;
-                      const ts = +dt;
-                      if (sharesMap[ts]) return;
-                      const qty = symTrades.filter(t => +t.date! <= ts).reduce((s, t) => s + t.quantity, 0);
-                      sharesMap[ts] = { ts, label: fmtDate(dt) ?? "", qty: Math.round(qty) };
+                    Object.entries(amountByDate).forEach(([label, entry]) => {
+                      const ps = perShareByDate[label];
+                      if (!ps || ps.perShare <= 0) return;
+                      const qty = Math.round(entry.amount / ps.perShare);
+                      if (qty > 0) sharesMap[entry.ts] = { ts: entry.ts, label, qty };
                     });
                     const sharesSeries = Object.values(sharesMap).sort((a, b) => a.ts - b.ts);
-                    const hasShares = sharesSeries.length >= 1 && sharesSeries.some(r => r.qty !== 0);
+                    const hasShares = sharesSeries.length >= 1;
 
                     return (
                       <div style={{ borderTop: "1px solid #f3f4f6" }}>
@@ -435,7 +430,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                         {hasShares && (
                           <div style={{ padding: "14px 16px 0" }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                              Shares held at payment date
+                              Shares qualifying for dividend
                             </div>
                             <ResponsiveContainer width="100%" height={90}>
                               <LineChart data={sharesSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
