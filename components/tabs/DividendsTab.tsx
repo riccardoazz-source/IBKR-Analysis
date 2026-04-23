@@ -54,7 +54,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
   const tsSeries = stock && stock !== "loading"
     ? stock.series.map(pt => {
         const ts = new Date(pt.date).getTime();
-        const isDiv = divTimestamps.some(dt => Math.abs(dt - ts) < 36 * 3600000);
+        const isDiv = divTimestamps.some(dt => Math.abs(dt - ts) < 12 * 3600000);
         return { ts, price: pt.price, isDiv };
       })
     : [];
@@ -380,7 +380,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           isin={pos?.isin ?? ""}
                           currency={pos?.currency ?? divCcy}
                           from={firstDivDate ? firstDivDate.toISOString().slice(0, 10) : ""}
-                          to={reportDate.toISOString().slice(0, 10)}
+                          to={new Date(+reportDate + 86400000).toISOString().slice(0, 10)}
                           domainMin={domainMin}
                           domainMax={domainMax}
                           divTimestamps={divTimestamps}
