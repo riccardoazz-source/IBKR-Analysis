@@ -80,7 +80,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
             <LineChart data={tsSeries} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
-              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
+              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
                 labelFormatter={(ts: number) => longTs(ts)} />
@@ -99,6 +99,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
 export default function DividendsTab({ data }: { data: ParsedData }) {
   const { dividends, withholding, account, positions } = data;
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [secFilter, setSecFilter] = useState("all");
   const [divFilter, setDivFilter] = useState("all");
 
   const posMap = positions.reduce<Record<string, typeof positions[0]>>((m, p) => { m[p.symbol] = p; return m; }, {});
@@ -283,7 +284,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                 <div key={sk} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
                   <div
                     style={{ padding: "10px 14px", cursor: "pointer", background: isOpen ? "#f9fafb" : "#fff" }}
-                    onClick={() => setExpanded(isOpen ? null : sk)}
+                    onClick={() => { setExpanded(isOpen ? null : sk); setSecFilter("all"); }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, overflow: "hidden" }}>
@@ -317,6 +318,21 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   {isOpen && (() => {
                     const sortedDivs = [...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || ""));
 
+                    /* Per-security filter options */
+                    const secFilterYears = [...new Set(sortedDivs.map(d => { const dt = d.date ?? parseIBDate(d.dateTime); return dt ? dt.getUTCFullYear().toString() : null; }).filter(Boolean) as string[])].sort().reverse();
+                    const secFilterMonths = [...new Set(sortedDivs.map(d => { const dt = d.date ?? parseIBDate(d.dateTime); return dt ? `${dt.getUTCFullYear()}-${String(dt.getUTCMonth()+1).padStart(2,"0")}` : null; }).filter(Boolean) as string[])].sort().reverse();
+                    const secFilterOpts: {value:string;label:string}[] = [{ value:"all", label:"All periods" }];
+                    secFilterYears.forEach(y => secFilterOpts.push({ value:`y:${y}`, label:y }));
+                    secFilterMonths.forEach(m => { const [y,mo]=m.split("-"); const dt=new Date(Number(y),Number(mo)-1,1); secFilterOpts.push({ value:`m:${m}`, label:dt.toLocaleDateString("en-GB",{month:"short",year:"numeric"}) }); });
+                    const showSecFilter = secFilterMonths.length > 1;
+
+                    const activeDivs = secFilter==="all" ? sortedDivs : sortedDivs.filter(d => {
+                      const dt = d.date ?? parseIBDate(d.dateTime); if (!dt) return false;
+                      if (secFilter.startsWith("y:")) return dt.getUTCFullYear().toString()===secFilter.slice(2);
+                      if (secFilter.startsWith("m:")) { const [y,mo]=secFilter.slice(2).split("-"); return dt.getUTCFullYear()===Number(y)&&dt.getUTCMonth()+1===Number(mo); }
+                      return true;
+                    });
+
                     /* Shared time domain for X-axis alignment across all charts */
                     const firstDivDate = sortedDivs[0]?.date ?? parseIBDate(sortedDivs[0]?.dateTime);
                     const reportDate = parseIBDate(account.toDate) ?? new Date();
@@ -329,7 +345,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
                     /* per-share series with timestamps */
                     const perShareByDate: Record<string, { label: string; ts: number; perShare: number; currency: string }> = {};
-                    sortedDivs.forEach((d) => {
+                    activeDivs.forEach((d) => {
                       const dt = d.date ?? parseIBDate(d.dateTime);
                       const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
                       const perShare = psMatch ? parseFloat(psMatch[1]) : null;
@@ -345,9 +361,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                       : null;
 
                     /* amount series with timestamps */
-                    const amountCcy = sortedDivs[0]?.currency ?? account.currency;
+                    const amountCcy = activeDivs[0]?.currency ?? sortedDivs[0]?.currency ?? account.currency;
                     const amountByDate: Record<string, { label: string; ts: number; amount: number }> = {};
-                    sortedDivs.forEach((d) => {
+                    activeDivs.forEach((d) => {
                       const dt = d.date ?? parseIBDate(d.dateTime);
                       const label = fmtDate(dt) ?? "";
                       const ts = dt ? +dt : 0;
@@ -368,8 +384,24 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     const sharesSeries = Object.values(sharesMap).sort((a, b) => a.ts - b.ts);
                     const hasShares = sharesSeries.length >= 1;
 
+                    const activeTotalNet = activeDivs.reduce((s, d) => s + d.amount * d.fxRate, 0);
+
                     return (
                       <div style={{ borderTop: "1px solid #f3f4f6" }}>
+
+                        {/* Period filter */}
+                        {showSecFilter && (
+                          <div style={{ padding: "10px 16px 6px", display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Period:</span>
+                            <select
+                              value={secFilter}
+                              onChange={e => setSecFilter(e.target.value)}
+                              style={{ padding: "4px 10px", border: "1px solid #e5e7eb", borderRadius: 6, fontSize: 12, color: "#374151", background: "#fff", cursor: "pointer", fontFamily: "inherit", outline: "none" }}
+                            >
+                              {secFilterOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </div>
+                        )}
 
                         {/* 1. Price history — aligned to same domain */}
                         <PriceChartInDiv
@@ -393,7 +425,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                                 <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={perShareSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
+                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 {avgPerShare != null && (
                                   <ReferenceLine y={avgPerShare} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: `avg ${avgPerShare.toFixed(4)}`, position: "right", fontSize: 9, fill: "#9ca3af" }} />
@@ -433,7 +465,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                               <LineChart data={sharesSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                                 <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={sharesSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
+                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 0)} shares`, "Qualifying"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 <Line type="stepAfter" dataKey="qty" stroke="#9333ea" strokeWidth={2} dot={{ r: 4, fill: "#9333ea", strokeWidth: 0 }} connectNulls />
                               </LineChart>
@@ -454,7 +486,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedDivs.map((d, j) => {
+                            {activeDivs.map((d, j) => {
                               const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
                               const perShare = psMatch ? parseFloat(psMatch[1]) : null;
                               return (
@@ -471,8 +503,9 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           </tbody>
                           <tfoot>
                             <tr>
-                              <td>Net total</td><td></td><td></td><td></td><td></td>
-                              <td style={{ textAlign: "right" }}>{fmtCcy(tN, account.currency)}</td>
+                              <td>{secFilter === "all" ? "Net total" : secFilterOpts.find(o => o.value === secFilter)?.label ?? "Net total"}</td>
+                              <td></td><td></td><td></td><td></td>
+                              <td style={{ textAlign: "right" }}>{fmtCcy(activeTotalNet, account.currency)}</td>
                             </tr>
                           </tfoot>
                         </table></div>
