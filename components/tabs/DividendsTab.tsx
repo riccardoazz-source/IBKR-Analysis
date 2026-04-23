@@ -349,15 +349,17 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     if (secFilter.startsWith("y:")) {
                       const year = Number(secFilter.slice(2));
                       chartDomainMin = Date.UTC(year, 0, 1);
-                      chartDomainMax = Date.UTC(year, 11, 31);
+                      chartDomainMax = Math.min(Date.UTC(year, 11, 31), +reportDate);
                       priceFrom = `${year}-01-01`;
-                      priceTo = `${year + 1}-01-01`;
+                      priceTo = new Date(Math.min(Date.UTC(year + 1, 0, 1), +reportDate + 86400000)).toISOString().slice(0, 10);
                     } else if (secFilter.startsWith("m:")) {
                       const [y, mo] = secFilter.slice(2).split("-").map(Number);
                       chartDomainMin = Date.UTC(y, mo - 1, 1);
-                      chartDomainMax = Date.UTC(y, mo - 1, new Date(Date.UTC(y, mo, 0)).getUTCDate());
+                      const lastDay = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+                      chartDomainMax = Math.min(Date.UTC(y, mo - 1, lastDay), +reportDate);
                       priceFrom = `${y}-${String(mo).padStart(2, "0")}-01`;
-                      priceTo = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, "0")}-01`;
+                      const rawPriceTo = mo === 12 ? Date.UTC(y + 1, 0, 1) : Date.UTC(y, mo, 1);
+                      priceTo = new Date(Math.min(rawPriceTo, +reportDate + 86400000)).toISOString().slice(0, 10);
                     } else {
                       chartDomainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
                       chartDomainMax = +reportDate;
