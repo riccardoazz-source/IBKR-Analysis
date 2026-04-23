@@ -79,7 +79,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
           <ResponsiveContainer width="100%" height={120}>
             <LineChart data={tsSeries} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="ts" type="number" scale="time" domain={[chartDomainMin, chartDomainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
