@@ -79,7 +79,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
         <div style={{ fontSize: 11, color: "#9ca3af", padding: "8px 0" }}>Loading price data…</div>
       ) : stock && tsSeries.length > 0 ? (
         <>
-          <ResponsiveContainer width="100%" height={150}>
+          <ResponsiveContainer width="100%" height={120}>
             <LineChart data={tsSeries} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
               <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
@@ -388,14 +388,14 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
                         {/* 2. Dividend per share over time */}
                         {hasPerShare && (
-                          <div style={{ padding: "14px 16px 0" }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                          <div style={{ padding: "10px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
                               Dividend per share over time ({perShareSeries[0].currency}/share)
                             </div>
-                            <ResponsiveContainer width="100%" height={110}>
+                            <ResponsiveContainer width="100%" height={85}>
                               <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={perShareSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 {avgPerShare != null && (
@@ -409,14 +409,14 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
                         {/* 3. Dividend amount over time */}
                         {amountSeries.length >= 1 && (
-                          <div style={{ padding: "14px 16px 0" }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                          <div style={{ padding: "10px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
                               Dividend amount over time ({amountCcy})
                             </div>
-                            <ResponsiveContainer width="100%" height={110}>
+                            <ResponsiveContainer width="100%" height={85}>
                               <LineChart data={amountSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={amountSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 4)} ${amountCcy}`, "Amount"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 <ReferenceLine y={avgAmount} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
@@ -426,18 +426,18 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           </div>
                         )}
 
-                        {/* 4. Shares held at each payment — shows position size over time */}
+                        {/* 4. Shares qualifying for dividend */}
                         {hasShares && (
-                          <div style={{ padding: "14px 16px 0" }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                          <div style={{ padding: "10px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
                               Shares qualifying for dividend
                             </div>
-                            <ResponsiveContainer width="100%" height={90}>
+                            <ResponsiveContainer width="100%" height={75}>
                               <LineChart data={sharesSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={sharesSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
-                                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 0)} shares`, "Held"]} labelFormatter={(ts: number) => longTs(ts)} />
+                                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 0)} shares`, "Qualifying"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 <Line type="stepAfter" dataKey="qty" stroke="#9333ea" strokeWidth={2} dot={{ r: 4, fill: "#9333ea", strokeWidth: 0 }} connectNulls />
                               </LineChart>
                             </ResponsiveContainer>
