@@ -37,9 +37,9 @@ function longTs(ts: number) {
   return `${String(d.getUTCDate()).padStart(2,"0")} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMax, divTimestamps }: {
+function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMax, divDates }: {
   symbol: string; isin: string; currency: string; from: string; to: string;
-  domainMin: number; domainMax: number; divTimestamps: number[];
+  domainMin: number; domainMax: number; divDates: string[];
 }) {
   const [stock, setStock] = useState<PriceResult | null | "loading">("loading");
   useEffect(() => {
@@ -51,12 +51,9 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
       .catch(() => setStock(null));
   }, [symbol, isin, currency, from, to]);
 
+  const divDateSet = new Set(divDates);
   const tsSeries = stock && stock !== "loading"
-    ? stock.series.map(pt => {
-        const ts = new Date(pt.date).getTime();
-        const isDiv = divTimestamps.some(dt => Math.abs(dt - ts) < 12 * 3600000);
-        return { ts, price: pt.price, isDiv };
-      })
+    ? stock.series.map(pt => ({ ts: new Date(pt.date).getTime(), price: pt.price, isDiv: divDateSet.has(pt.date) }))
     : [];
 
   const divDot = (props: { cx?: number; cy?: number; payload?: { ts: number; isDiv?: boolean } }) => {
@@ -325,10 +322,10 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     const reportDate = parseIBDate(account.toDate) ?? new Date();
                     const domainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
                     const domainMax = +reportDate;
-                    const divTimestamps = sortedDivs.map(d => {
+                    const divDates = [...new Set(sortedDivs.map(d => {
                       const dt = d.date ?? parseIBDate(d.dateTime);
-                      return dt ? +dt : 0;
-                    }).filter(ts => ts > 0);
+                      return dt ? dt.toISOString().slice(0, 10) : null;
+                    }).filter((s): s is string => s !== null))];
 
                     /* per-share series with timestamps */
                     const perShareByDate: Record<string, { label: string; ts: number; perShare: number; currency: string }> = {};
@@ -383,7 +380,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           to={new Date(+reportDate + 86400000).toISOString().slice(0, 10)}
                           domainMin={domainMin}
                           domainMax={domainMax}
-                          divTimestamps={divTimestamps}
+                          divDates={divDates}
                         />
 
                         {/* 2. Dividend per share over time */}
