@@ -25,8 +25,64 @@ function YieldBadge({ symbol, isin, currency }: { symbol: string; isin: string; 
   );
 }
 
+interface PriceResult { series: { date: string; price: number }[]; currency: string; ticker: string; }
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function shortTs(ts: number) {
+  const d = new Date(ts);
+  return `${String(d.getUTCDate()).padStart(2,"0")} ${MONTHS[d.getUTCMonth()]}`;
+}
+function longTs(ts: number) {
+  const d = new Date(ts);
+  return `${String(d.getUTCDate()).padStart(2,"0")} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMax, syncId }: {
+  symbol: string; isin: string; currency: string; from: string; to: string;
+  domainMin: number; domainMax: number; syncId: string;
+}) {
+  const [stock, setStock] = useState<PriceResult | null | "loading">("loading");
+  useEffect(() => {
+    if (!from) return;
+    setStock("loading");
+    fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&isin=${encodeURIComponent(isin)}&currency=${encodeURIComponent(currency)}&from=${from}&to=${to}`)
+      .then(r => r.ok ? r.json() as Promise<PriceResult> : Promise.reject())
+      .then(d => setStock(d))
+      .catch(() => setStock(null));
+  }, [symbol, isin, currency, from, to]);
+
+  const tsSeries = stock && stock !== "loading"
+    ? stock.series.map(pt => ({ ts: new Date(pt.date).getTime(), price: pt.price }))
+    : [];
+
+  return (
+    <div style={{ padding: "14px 16px 0" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+        {stock && stock !== "loading" ? `Price history — ${stock.ticker} (${stock.currency})` : "Price history"}
+      </div>
+      {stock === "loading" ? (
+        <div style={{ fontSize: 11, color: "#9ca3af", padding: "8px 0" }}>Loading price data…</div>
+      ) : stock && tsSeries.length > 0 ? (
+        <ResponsiveContainer width="100%" height={150}>
+          <LineChart data={tsSeries} syncId={syncId} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+            <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={55} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
+            <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
+              formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
+              labelFormatter={(ts: number) => longTs(ts)} />
+            <Line type="monotone" dataKey="price" stroke="#374151" strokeWidth={2} dot={false} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      ) : (
+        <div style={{ fontSize: 11, color: "#9ca3af", padding: "6px 0" }}>No price data found for &ldquo;{symbol}&rdquo;</div>
+      )}
+    </div>
+  );
+}
+
 export default function DividendsTab({ data }: { data: ParsedData }) {
-  const { dividends, withholding, account, positions } = data;
+  const { dividends, withholding, account, positions, trades } = data;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [divFilter, setDivFilter] = useState("all");
 
@@ -45,7 +101,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
     return m;
   }, {});
 
-  // Withholding per symbol in original currency
   const whOrigBySymbol = withholding.reduce<Record<string, number>>((m, d) => {
     if (d.symbol) m[d.symbol] = (m[d.symbol] || 0) + d.amount;
     return m;
@@ -81,7 +136,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
     });
   }, [dividends, withholding]);
 
-  /* ── filter options (same pattern as Cash Movements) ── */
   const divFilterOptions = useMemo(() => {
     const years = [...new Set(byMonth.map((m) => m.key.slice(0, 4)))].sort().reverse();
     const opts: { value: string; label: string }[] = [{ value: "all", label: "All periods" }];
@@ -103,7 +157,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
   const filteredWH = filteredByMonth.reduce((s, m) => s + m.wh, 0);
   const filteredNet = filteredGross + filteredWH;
 
-  // Aggregate net-by-currency for the filtered period total
   const filteredNetByCcy = filteredByMonth.reduce<Record<string, number>>((acc, m) => {
     Object.entries(m.netByCcy).forEach(([ccy, v]) => { acc[ccy] = (acc[ccy] || 0) + v; });
     return acc;
@@ -124,7 +177,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
 
       {byMonth.length > 0 && (
         <>
-          {/* Chart card with filter */}
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
               <div className="st" style={{ marginBottom: 0 }}>Monthly net dividends ({account.currency})</div>
@@ -156,7 +208,6 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
             )}
           </div>
 
-          {/* Monthly Summary table with filter */}
           <div className="card">
             <div className="st">Monthly summary</div>
             <div className="tbl-x"><table>
@@ -251,110 +302,168 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                   {isOpen && (() => {
                     const sortedDivs = [...divs].sort((a, b) => (a.dateTime || "").localeCompare(b.dateTime || ""));
 
-                    /* per-share series — one entry per date (first valid rate) */
-                    const perShareByDate: Record<string, { label: string; perShare: number; currency: string }> = {};
+                    /* Shared time domain for X-axis alignment across all charts */
+                    const firstDivDate = sortedDivs[0]?.date ?? parseIBDate(sortedDivs[0]?.dateTime);
+                    const reportDate = parseIBDate(account.toDate) ?? new Date();
+                    const domainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
+                    const domainMax = +reportDate;
+                    const syncId = `div-${sk}`;
+
+                    /* per-share series with timestamps */
+                    const perShareByDate: Record<string, { label: string; ts: number; perShare: number; currency: string }> = {};
                     sortedDivs.forEach((d) => {
+                      const dt = d.date ?? parseIBDate(d.dateTime);
                       const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
                       const perShare = psMatch ? parseFloat(psMatch[1]) : null;
-                      const label = fmtDate(d.date || parseIBDate(d.dateTime)) ?? "";
+                      const label = fmtDate(dt) ?? "";
+                      const ts = dt ? +dt : 0;
                       if (perShare != null && !perShareByDate[label])
-                        perShareByDate[label] = { label, perShare, currency: d.currency };
+                        perShareByDate[label] = { label, ts, perShare, currency: d.currency };
                     });
-                    const perShareSeries = Object.values(perShareByDate);
+                    const perShareSeries = Object.values(perShareByDate).sort((a, b) => a.ts - b.ts);
                     const hasPerShare = perShareSeries.length >= 1;
                     const avgPerShare = hasPerShare
                       ? perShareSeries.reduce((s, r) => s + r.perShare, 0) / perShareSeries.length
                       : null;
 
-                    /* amount series — group by date, sum (handles IBKR corrections) */
+                    /* amount series with timestamps */
                     const amountCcy = sortedDivs[0]?.currency ?? account.currency;
-                    const amountByDate: Record<string, { label: string; amount: number }> = {};
+                    const amountByDate: Record<string, { label: string; ts: number; amount: number }> = {};
                     sortedDivs.forEach((d) => {
-                      const label = fmtDate(d.date || parseIBDate(d.dateTime)) ?? "";
-                      if (!amountByDate[label]) amountByDate[label] = { label, amount: 0 };
+                      const dt = d.date ?? parseIBDate(d.dateTime);
+                      const label = fmtDate(dt) ?? "";
+                      const ts = dt ? +dt : 0;
+                      if (!amountByDate[label]) amountByDate[label] = { label, ts, amount: 0 };
                       amountByDate[label].amount += d.amount;
                     });
-                    const amountSeries = Object.values(amountByDate).map((r) => ({ label: r.label, amount: +r.amount.toFixed(4) }));
+                    const amountSeries = Object.values(amountByDate).sort((a, b) => a.ts - b.ts).map(r => ({ ...r, amount: +r.amount.toFixed(4) }));
                     const avgAmount = amountSeries.reduce((s, r) => s + r.amount, 0) / amountSeries.length;
 
+                    /* shares held at each dividend date — cumulative quantity from trades */
+                    const symTrades = trades
+                      .filter(t => t.symbol === sk && t.date)
+                      .sort((a, b) => +a.date! - +b.date!);
+                    const sharesMap: Record<number, { ts: number; label: string; qty: number }> = {};
+                    sortedDivs.forEach(d => {
+                      const dt = d.date ?? parseIBDate(d.dateTime);
+                      if (!dt) return;
+                      const ts = +dt;
+                      if (sharesMap[ts]) return;
+                      const qty = symTrades.filter(t => +t.date! <= ts).reduce((s, t) => s + t.quantity, 0);
+                      sharesMap[ts] = { ts, label: fmtDate(dt) ?? "", qty: Math.round(qty) };
+                    });
+                    const sharesSeries = Object.values(sharesMap).sort((a, b) => a.ts - b.ts);
+                    const hasShares = sharesSeries.length >= 1 && sharesSeries.some(r => r.qty !== 0);
+
                     return (
-                    <div style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <div style={{ borderTop: "1px solid #f3f4f6" }}>
 
-                      {/* Per-share sparkline */}
-                      {hasPerShare && (
-                        <div style={{ padding: "14px 16px 0" }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                            Dividend per share over time ({perShareSeries[0].currency}/share)
+                        {/* 1. Price history — aligned to same domain */}
+                        <PriceChartInDiv
+                          symbol={sk}
+                          isin={pos?.isin ?? ""}
+                          currency={pos?.currency ?? divCcy}
+                          from={firstDivDate ? firstDivDate.toISOString().slice(0, 10) : ""}
+                          to={reportDate.toISOString().slice(0, 10)}
+                          domainMin={domainMin}
+                          domainMax={domainMax}
+                          syncId={syncId}
+                        />
+
+                        {/* 2. Dividend per share over time */}
+                        {hasPerShare && (
+                          <div style={{ padding: "14px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                              Dividend per share over time ({perShareSeries[0].currency}/share)
+                            </div>
+                            <ResponsiveContainer width="100%" height={110}>
+                              <LineChart data={perShareSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
+                                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} labelFormatter={(ts: number) => longTs(ts)} />
+                                {avgPerShare != null && (
+                                  <ReferenceLine y={avgPerShare} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: `avg ${avgPerShare.toFixed(4)}`, position: "right", fontSize: 9, fill: "#9ca3af" }} />
+                                )}
+                                <Line type="monotone" dataKey="perShare" stroke="#16a34a" strokeWidth={2} dot={{ r: 4, fill: "#16a34a", strokeWidth: 0 }} connectNulls />
+                              </LineChart>
+                            </ResponsiveContainer>
                           </div>
-                          <ResponsiveContainer width="100%" height={110}>
-                            <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
-                              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} />
-                              {avgPerShare != null && (
-                                <ReferenceLine y={avgPerShare} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: `avg ${avgPerShare.toFixed(4)}`, position: "right", fontSize: 9, fill: "#9ca3af" }} />
-                              )}
-                              <Line type="monotone" dataKey="perShare" stroke="#16a34a" strokeWidth={2} dot={{ r: 4, fill: "#16a34a", strokeWidth: 0 }} connectNulls />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Amount over time sparkline */}
-                      {amountSeries.length >= 1 && (
-                        <div style={{ padding: "14px 16px 0" }}>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                            Dividend amount over time ({amountCcy})
+                        {/* 3. Dividend amount over time */}
+                        {amountSeries.length >= 1 && (
+                          <div style={{ padding: "14px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                              Dividend amount over time ({amountCcy})
+                            </div>
+                            <ResponsiveContainer width="100%" height={110}>
+                              <LineChart data={amountSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
+                                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 4)} ${amountCcy}`, "Amount"]} labelFormatter={(ts: number) => longTs(ts)} />
+                                <ReferenceLine y={avgAmount} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
+                                <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} dot={{ r: 4, fill: "#2563eb", strokeWidth: 0 }} connectNulls />
+                              </LineChart>
+                            </ResponsiveContainer>
                           </div>
-                          <ResponsiveContainer width="100%" height={110}>
-                            <LineChart data={amountSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                              <XAxis dataKey="label" tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
-                              <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 4)} ${amountCcy}`, "Amount"]} />
-                              <ReferenceLine y={avgAmount} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
-                              <Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} dot={{ r: 4, fill: "#2563eb", strokeWidth: 0 }} connectNulls />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
+                        )}
 
-                      <div className="tbl-x"><table>
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th style={{ textAlign: "right" }}>Amount</th>
-                            <th>CCY</th>
-                            <th style={{ textAlign: "right" }}>Per Share</th>
-                            <th style={{ textAlign: "right" }}>FX Rate</th>
-                            <th style={{ textAlign: "right" }}>In {account.currency}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortedDivs.map((d, j) => {
-                            const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
-                            const perShare = psMatch ? parseFloat(psMatch[1]) : null;
-                            return (
-                              <tr key={j}>
-                                <td style={{ color: "#9ca3af" }}>{fmtDate(d.date || parseIBDate(d.dateTime))}</td>
-                                <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 600 }}>{fmtNum(d.amount, 4)} {d.currency}</td>
-                                <td style={{ color: "#9ca3af" }}>{d.currency}</td>
-                                <td style={{ textAlign: "right", color: "#6b7280" }}>{perShare != null ? `${fmtNum(perShare, 4)} ${d.currency}/sh` : "—"}</td>
-                                <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtNum(d.fxRate, 4)}</td>
-                                <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 700 }}>{fmtCcy(d.amount * d.fxRate, account.currency)}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr>
-                            <td>Net total</td><td></td><td></td><td></td><td></td>
-                            <td style={{ textAlign: "right" }}>{fmtCcy(tN, account.currency)}</td>
-                          </tr>
-                        </tfoot>
-                      </table></div>
-                    </div>
+                        {/* 4. Shares held at each payment — shows position size over time */}
+                        {hasShares && (
+                          <div style={{ padding: "14px 16px 0" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
+                              Shares held at payment date
+                            </div>
+                            <ResponsiveContainer width="100%" height={90}>
+                              <LineChart data={sharesSeries} syncId={syncId} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                                <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={42} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
+                                <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 0)} shares`, "Held"]} labelFormatter={(ts: number) => longTs(ts)} />
+                                <Line type="stepAfter" dataKey="qty" stroke="#9333ea" strokeWidth={2} dot={{ r: 4, fill: "#9333ea", strokeWidth: 0 }} connectNulls />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        {/* 5. Payments table */}
+                        <div style={{ marginTop: 14 }} className="tbl-x"><table>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th style={{ textAlign: "right" }}>Amount</th>
+                              <th>CCY</th>
+                              <th style={{ textAlign: "right" }}>Per Share</th>
+                              <th style={{ textAlign: "right" }}>FX Rate</th>
+                              <th style={{ textAlign: "right" }}>In {account.currency}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sortedDivs.map((d, j) => {
+                              const psMatch = (d.description || "").match(/([\d.]+)\s+PER\s+SHARE/i);
+                              const perShare = psMatch ? parseFloat(psMatch[1]) : null;
+                              return (
+                                <tr key={j}>
+                                  <td style={{ color: "#9ca3af" }}>{fmtDate(d.date || parseIBDate(d.dateTime))}</td>
+                                  <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 600 }}>{fmtNum(d.amount, 4)} {d.currency}</td>
+                                  <td style={{ color: "#9ca3af" }}>{d.currency}</td>
+                                  <td style={{ textAlign: "right", color: "#6b7280" }}>{perShare != null ? `${fmtNum(perShare, 4)} ${d.currency}/sh` : "—"}</td>
+                                  <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtNum(d.fxRate, 4)}</td>
+                                  <td style={{ textAlign: "right", color: "#16a34a", fontWeight: 700 }}>{fmtCcy(d.amount * d.fxRate, account.currency)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot>
+                            <tr>
+                              <td>Net total</td><td></td><td></td><td></td><td></td>
+                              <td style={{ textAlign: "right" }}>{fmtCcy(tN, account.currency)}</td>
+                            </tr>
+                          </tfoot>
+                        </table></div>
+                      </div>
                     );
                   })()}
                 </div>
