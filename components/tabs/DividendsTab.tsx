@@ -79,7 +79,7 @@ function PriceChartInDiv({ symbol, isin, currency, from, to, domainMin, domainMa
           <ResponsiveContainer width="100%" height={120}>
             <LineChart data={tsSeries} margin={{ top: 14, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <XAxis dataKey="ts" type="number" scale="time" domain={[chartDomainMin, chartDomainMax]} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
               <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [`${fmtNum(v, 2)} ${(stock as PriceResult).currency}`, "Price"]}
@@ -336,12 +336,34 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     /* Shared time domain for X-axis alignment across all charts */
                     const firstDivDate = sortedDivs[0]?.date ?? parseIBDate(sortedDivs[0]?.dateTime);
                     const reportDate = parseIBDate(account.toDate) ?? new Date();
-                    const domainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
-                    const domainMax = +reportDate;
                     const divDates = [...new Set(sortedDivs.map(d => {
                       const dt = d.date ?? parseIBDate(d.dateTime);
                       return dt ? dt.toISOString().slice(0, 10) : null;
                     }).filter((s): s is string => s !== null))];
+
+                    /* Chart domain and price fetch range — zoom to selected period */
+                    let chartDomainMin: number;
+                    let chartDomainMax: number;
+                    let priceFrom: string;
+                    let priceTo: string;
+                    if (secFilter.startsWith("y:")) {
+                      const year = Number(secFilter.slice(2));
+                      chartDomainMin = Date.UTC(year, 0, 1);
+                      chartDomainMax = Date.UTC(year, 11, 31);
+                      priceFrom = `${year}-01-01`;
+                      priceTo = `${year + 1}-01-01`;
+                    } else if (secFilter.startsWith("m:")) {
+                      const [y, mo] = secFilter.slice(2).split("-").map(Number);
+                      chartDomainMin = Date.UTC(y, mo - 1, 1);
+                      chartDomainMax = Date.UTC(y, mo - 1, new Date(Date.UTC(y, mo, 0)).getUTCDate());
+                      priceFrom = `${y}-${String(mo).padStart(2, "0")}-01`;
+                      priceTo = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, "0")}-01`;
+                    } else {
+                      chartDomainMin = firstDivDate ? +firstDivDate : +reportDate - 365 * 86400000;
+                      chartDomainMax = +reportDate;
+                      priceFrom = firstDivDate ? firstDivDate.toISOString().slice(0, 10) : "";
+                      priceTo = new Date(+reportDate + 86400000).toISOString().slice(0, 10);
+                    }
 
                     /* per-share series with timestamps */
                     const perShareByDate: Record<string, { label: string; ts: number; perShare: number; currency: string }> = {};
@@ -408,10 +430,10 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                           symbol={sk}
                           isin={pos?.isin ?? ""}
                           currency={pos?.currency ?? divCcy}
-                          from={firstDivDate ? firstDivDate.toISOString().slice(0, 10) : ""}
-                          to={new Date(+reportDate + 86400000).toISOString().slice(0, 10)}
-                          domainMin={domainMin}
-                          domainMax={domainMax}
+                          from={priceFrom}
+                          to={priceTo}
+                          domainMin={chartDomainMin}
+                          domainMax={chartDomainMax}
                           divDates={divDates}
                         />
 
@@ -424,7 +446,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                             <ResponsiveContainer width="100%" height={85}>
                               <LineChart data={perShareSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={perShareSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[chartDomainMin, chartDomainMax]} ticks={perShareSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => v.toFixed(4)} domain={["auto", "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${v.toFixed(4)} ${perShareSeries[0].currency}/sh`, "Per share"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 {avgPerShare != null && (
@@ -445,7 +467,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                             <ResponsiveContainer width="100%" height={85}>
                               <LineChart data={amountSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={amountSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[chartDomainMin, chartDomainMax]} ticks={amountSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 4)} domain={["auto", "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 4)} ${amountCcy}`, "Amount"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 <ReferenceLine y={avgAmount} stroke="#d1d5db" strokeDasharray="4 3" label={{ value: "avg", position: "right", fontSize: 9, fill: "#9ca3af" }} />
@@ -464,7 +486,7 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                             <ResponsiveContainer width="100%" height={75}>
                               <LineChart data={sharesSeries} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                <XAxis dataKey="ts" type="number" scale="time" domain={[domainMin, domainMax]} ticks={sharesSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                                <XAxis dataKey="ts" type="number" scale="time" domain={[chartDomainMin, chartDomainMax]} ticks={sharesSeries.map(r => r.ts)} tickFormatter={shortTs} tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
                                 <YAxis tick={{ fontSize: 9, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => fmtNum(v, 0)} domain={[0, "auto"]} />
                                 <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }} formatter={(v: number) => [`${fmtNum(v, 0)} shares`, "Qualifying"]} labelFormatter={(ts: number) => longTs(ts)} />
                                 <Line type="stepAfter" dataKey="qty" stroke="#9333ea" strokeWidth={2} dot={{ r: 4, fill: "#9333ea", strokeWidth: 0 }} connectNulls />
