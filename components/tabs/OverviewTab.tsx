@@ -33,6 +33,13 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
   const depNet = deposits.reduce((s, d) => s + d.amount * d.fxRate, 0);
   const totalCash = depNet + transferNet;
 
+  const totalInvested = startV + totalCash;
+  const totalGain = nav.endingValue - totalInvested;
+  const netDivs = (nav.dividends || 0) + (nav.withholdingTax || 0);
+  const priceGain = totalGain - netDivs;
+  const simpleReturnTotal = totalInvested > 0 ? totalGain / totalInvested : null;
+  const simpleReturnPrice = totalInvested > 0 ? priceGain / totalInvested : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div className="g3">
@@ -47,6 +54,55 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
       </div>
 
       <PortfolioChart data={data} />
+
+      <div className="card">
+        <div className="st">Return analysis</div>
+        <div className="g2">
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>Absolute breakdown</div>
+            {([
+              ["Total invested", fmtCcy(totalInvested, account.currency), undefined],
+              ["Current NAV", fmtCcy(nav.endingValue, account.currency), undefined],
+              ["Net gain (incl. div.)", fmtCcy(totalGain, account.currency), totalGain >= 0 ? "#16a34a" : "#dc2626"],
+              ["Dividends received (net)", fmtCcy(netDivs, account.currency), "#d97706"],
+              ["Price gain (excl. div.)", fmtCcy(priceGain, account.currency), priceGain >= 0 ? "#16a34a" : "#dc2626"],
+            ] as [string, string, string | undefined][]).map(([l, v, c]) => (
+              <div key={l} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: "1px solid #f3f4f6" }}>
+                <span style={{ color: "#9ca3af" }}>{l}</span>
+                <span style={{ fontWeight: 600, color: c || "#374151" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>Return comparison</div>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", fontSize: 10, color: "#9ca3af", fontWeight: 700, paddingBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Method</th>
+                  <th style={{ textAlign: "right", fontSize: 10, color: "#9ca3af", fontWeight: 700, paddingBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Incl. div.</th>
+                  <th style={{ textAlign: "right", fontSize: 10, color: "#9ca3af", fontWeight: 700, paddingBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Excl. div.</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ fontSize: 12, padding: "5px 0", borderBottom: "1px solid #f3f4f6", color: "#374151" }}>Simple (NAV / invested)</td>
+                  <td style={{ textAlign: "right", fontSize: 13, fontWeight: 700, padding: "5px 0", borderBottom: "1px solid #f3f4f6", color: simpleReturnTotal != null && simpleReturnTotal >= 0 ? "#16a34a" : "#dc2626" }}>{fmtPct(simpleReturnTotal)}</td>
+                  <td style={{ textAlign: "right", fontSize: 13, fontWeight: 700, padding: "5px 0", borderBottom: "1px solid #f3f4f6", color: simpleReturnPrice != null && simpleReturnPrice >= 0 ? "#f59e0b" : "#dc2626" }}>{fmtPct(simpleReturnPrice)}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontSize: 12, padding: "5px 0", color: "#374151" }}>Time-Weighted (TWR)</td>
+                  <td style={{ textAlign: "right", fontSize: 13, fontWeight: 700, padding: "5px 0", color: twr != null && twr >= 0 ? "#16a34a" : "#dc2626" }}>{fmtPct(twr)}</td>
+                  <td style={{ textAlign: "right", fontSize: 13, fontWeight: 700, padding: "5px 0", color: twrNoDiv != null && twrNoDiv >= 0 ? "#f59e0b" : "#dc2626" }}>{fmtPct(twrNoDiv)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 10, lineHeight: 1.5 }}>
+              Simple: (NAV − invested) / invested — does not account for cash-flow timing.<br />
+              TWR: chain-links sub-period returns, neutralizing deposit/withdrawal timing.
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div className="g-main">
         <div className="card">
