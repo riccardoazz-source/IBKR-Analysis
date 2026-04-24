@@ -110,7 +110,7 @@ function StockDetail({ symbol, isin, currency, trades, to }: {
                 tickFormatter={(v: number) => fmtNum(v, 2)} domain={["auto", "auto"]} />
               <Tooltip contentStyle={{ borderRadius: 8, fontSize: 11, border: "1px solid #e5e7eb" }}
                 formatter={(v: number) => [`${fmtNum(v, 2)} ${stock.currency}`, "Price"]} />
-              <Line type="monotone" dataKey="price" stroke="#2563eb" strokeWidth={2} dot={tradeDot as never} connectNulls />
+              <Line type="monotone" dataKey="price" stroke="#374151" strokeWidth={2} dot={tradeDot as never} connectNulls />
             </LineChart>
           </ResponsiveContainer>
           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>

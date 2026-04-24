@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 
 const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; bot/1.0)", Accept: "application/json" };
 
-async function searchByISIN(isin: string, currency: string): Promise<string | null> {
+// Currency → preferred Yahoo Finance exchange suffixes (ordered by likelihood)
+const CCY_SUFFIXES: Record<string, string[]> = {
+  EUR: [".DE", ".AS", ".MI", ".PA", ".F", ".BE", ".MU", ""],
+  GBP: [".L", ""],
+  GBX: [".L", ""],
+  CHF: [".SW", ""],
+  USD: [""],
+};
+
+async function searchByISIN(isin: string, currency: string): Promise<{ exact: string | null; any: string | null }> {
   for (const base of ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"]) {
     try {
       const url = `${base}/v1/finance/search?q=${encodeURIComponent(isin)}&quotesCount=10&newsCount=0&listsCount=0`;
@@ -11,13 +20,12 @@ async function searchByISIN(isin: string, currency: string): Promise<string | nu
       const json = await resp.json() as { quotes?: { symbol: string; quoteType: string; currency?: string }[] };
       const quotes = (json.quotes || []).filter(q => ["EQUITY", "ETF", "MUTUALFUND", "FUND"].includes(q.quoteType));
       if (!quotes.length) continue;
-      // Normalize: IBKR uses GBX (pence), Yahoo uses GBp
       const normCcy = currency === "GBX" ? "GBp" : currency;
       const exact = quotes.find(q => q.currency === normCcy);
-      return exact?.symbol ?? quotes[0].symbol;
+      return { exact: exact?.symbol ?? null, any: quotes[0].symbol };
     } catch { continue; }
   }
-  return null;
+  return { exact: null, any: null };
 }
 
 async function fetchPriceSeries(ticker: string, p1: number, p2: number) {
@@ -58,21 +66,36 @@ export async function GET(req: NextRequest) {
   const p1 = Math.floor(from.getTime() / 1000);
   const p2 = Math.floor(to.getTime() / 1000);
 
-  // 1. ISIN lookup (most accurate — finds the correct exchange listing)
+  // 1. ISIN lookup — use only if it finds an exact currency match
+  let isinAnyFallback: string | null = null;
   if (isin) {
-    const ticker = await searchByISIN(isin, currency);
-    if (ticker) {
-      const data = await fetchPriceSeries(ticker, p1, p2);
+    const { exact, any } = await searchByISIN(isin, currency);
+    isinAnyFallback = any;
+    if (exact) {
+      const data = await fetchPriceSeries(exact, p1, p2);
       if (data) return NextResponse.json(data, {
         headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
       });
     }
   }
 
-  // 2. Fallback: try IBKR symbol + common exchange suffixes
-  const candidates = [symbol, `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`].filter(Boolean);
+  // 2. Try symbol with currency-appropriate exchange suffixes first
+  const suffixes = CCY_SUFFIXES[currency] ?? ["", ".DE", ".AS", ".L", ".MI", ".PA"];
+  const candidates = [...new Set([
+    ...suffixes.map(s => `${symbol}${s}`),
+    `${symbol}.DE`, `${symbol}.AS`, `${symbol}.L`, `${symbol}.MI`, `${symbol}.PA`,
+    symbol,
+  ])].filter(Boolean);
   for (const candidate of candidates) {
     const data = await fetchPriceSeries(candidate, p1, p2);
+    if (data) return NextResponse.json(data, {
+      headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
+    });
+  }
+
+  // 3. ISIN fallback — any currency (last resort)
+  if (isinAnyFallback) {
+    const data = await fetchPriceSeries(isinAnyFallback, p1, p2);
     if (data) return NextResponse.json(data, {
       headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=7200" },
     });
