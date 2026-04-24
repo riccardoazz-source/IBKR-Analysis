@@ -55,27 +55,22 @@ export default function PortfolioChart({ data }: Props) {
       divMap[k] = (divMap[k] || 0) + d.amount * d.fxRate;
     });
 
-    let cT = 1, cN = 1;
+    let cumDiv = 0;
     return dailyNav.map((pt, i) => {
       const k = dayKey(+pt.date);
-      const pN = i === 0 ? sN : dailyNav[i - 1].total;
-      const dep = depMap[k] || 0;
       const div = divMap[k] || 0;
-      const den = pN + Math.max(0, dep);
-      if (den > 0 && isFinite(pt.total)) {
-        const r = (pt.total - pN - dep) / den;
-        if (isFinite(r) && r > -0.9 && r < 2) cT *= 1 + r;
-        const rn = (pt.total - div - pN - dep) / den;
-        if (isFinite(rn) && rn > -0.9 && rn < 2) cN *= 1 + rn;
-      }
+      cumDiv += div;
+      const inv = investedAt(+pt.date);
+      const simpleTotal = inv > 0 ? +((pt.total - inv) / inv * 100).toFixed(2) : 0;
+      const simplePrice = inv > 0 ? +((pt.total - cumDiv - inv) / inv * 100).toFixed(2) : 0;
       return {
         ts: +pt.date,
         dateKey: k,
         label: fmtDateS(pt.date),
         nav: pt.total,
-        invested: +investedAt(+pt.date).toFixed(2),
-        perfWDiv: +((cT - 1) * 100).toFixed(2),
-        perfNoDiv: +((cN - 1) * 100).toFixed(2),
+        invested: +inv.toFixed(2),
+        simpleTotal,
+        simplePrice,
       };
     });
   }, [dailyNav, nav, deposits, dividends, transfers, investedAt, hasDailyData]);
@@ -96,19 +91,7 @@ export default function PortfolioChart({ data }: Props) {
     return r.length >= 2 ? r : dailyPts;
   }, [dailyPts, period]);
 
-  // Rebase performance series so first visible point = 0%
-  const rebasedPerf = useMemo(() => {
-    if (!filtered.length) return filtered;
-    const f = filtered[0];
-    return filtered.map((pt) => ({
-      ...pt,
-      perfWDiv: +(((1 + pt.perfWDiv / 100) / (1 + f.perfWDiv / 100) - 1) * 100).toFixed(2),
-      perfNoDiv: +(((1 + pt.perfNoDiv / 100) / (1 + f.perfNoDiv / 100) - 1) * 100).toFixed(2),
-    }));
-  }, [filtered]);
-
   const last = filtered[filtered.length - 1];
-  const lastPerf = rebasedPerf[rebasedPerf.length - 1];
 
   if (!hasDailyData) return (
     <div className="card">
@@ -139,11 +122,11 @@ export default function PortfolioChart({ data }: Props) {
             <div style={{ marginBottom: 6 }}>
               <div style={{ fontSize: 26, fontWeight: 700, color: "#111827" }}>{fmtCcy(last?.nav, account.currency)}</div>
               <div style={{ display: "flex", gap: 20, marginTop: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: (last?.perfWDiv || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
-                  Total return: {fmtPct((last?.perfWDiv || 0) / 100)}
+                <span style={{ fontSize: 13, fontWeight: 600, color: (last?.simpleTotal || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
+                  Total return: {fmtPct((last?.simpleTotal || 0) / 100)}
                 </span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: (last?.perfNoDiv || 0) >= 0 ? "#f59e0b" : "#dc2626" }}>
-                  Excl. div.: {fmtPct((last?.perfNoDiv || 0) / 100)}
+                <span style={{ fontSize: 13, fontWeight: 600, color: (last?.simplePrice || 0) >= 0 ? "#f59e0b" : "#dc2626" }}>
+                  Excl. div.: {fmtPct((last?.simplePrice || 0) / 100)}
                 </span>
               </div>
             </div>
@@ -171,8 +154,8 @@ export default function PortfolioChart({ data }: Props) {
         ) : (
           <>
             <div style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: 26, fontWeight: 700, color: (lastPerf?.perfWDiv || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
-                {fmtPct((lastPerf?.perfWDiv || 0) / 100)}
+              <div style={{ fontSize: 26, fontWeight: 700, color: (last?.simpleTotal || 0) >= 0 ? "#16a34a" : "#dc2626" }}>
+                {fmtPct((last?.simpleTotal || 0) / 100)}
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 4, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#16a34a" }}>— Total (incl. div.)</span>
@@ -180,17 +163,17 @@ export default function PortfolioChart({ data }: Props) {
               </div>
             </div>
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={rebasedPerf} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+              <LineChart data={filtered} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={44} tickFormatter={(v: number) => v.toFixed(1) + "%"} />
                 <Tooltip
                   contentStyle={{ borderRadius: 8, fontSize: 12, border: "1px solid #e5e7eb" }}
-                  formatter={(v: number, n: string) => [v?.toFixed(2) + "%", n === "perfWDiv" ? "Total (incl. div.)" : "Price (excl. div.)"]}
+                  formatter={(v: number, n: string) => [v?.toFixed(2) + "%", n === "simpleTotal" ? "Total (incl. div.)" : "Price (excl. div.)"]}
                 />
                 <ReferenceLine y={0} stroke="#e5e7eb" strokeWidth={1.5} />
-                <Line type="monotone" dataKey="perfWDiv" stroke="#16a34a" strokeWidth={2.5} dot={false} connectNulls name="perfWDiv" />
-                <Line type="monotone" dataKey="perfNoDiv" stroke="#f59e0b" strokeWidth={2} dot={false} strokeDasharray="5 3" connectNulls name="perfNoDiv" />
+                <Line type="monotone" dataKey="simpleTotal" stroke="#16a34a" strokeWidth={2.5} dot={false} connectNulls name="simpleTotal" />
+                <Line type="monotone" dataKey="simplePrice" stroke="#f59e0b" strokeWidth={2} dot={false} strokeDasharray="5 3" connectNulls name="simplePrice" />
               </LineChart>
             </ResponsiveContainer>
           </>
