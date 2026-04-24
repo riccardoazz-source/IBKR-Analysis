@@ -170,12 +170,6 @@ export default function CashTab({ data }: { data: ParsedData }) {
             <span style={{ fontWeight: 700, color: "#2563eb" }}>Capital base</span>
             <span style={{ fontWeight: 700, color: "#2563eb" }}>{fmtCcy(capitalBase, account.currency)}</span>
           </div>
-          {availableCash > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb", marginBottom: 4 }}>
-              <span style={{ color: "#6b7280" }}>Available cash{availableCcys.length > 1 ? ` (${availableCcys.map(b => b.currency).join(", ")})` : availableCcys.length === 1 ? ` (${availableCcys[0].currency})` : ""}</span>
-              <span className="pos" style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
-            </div>
-          )}
 
           <div style={{ fontSize: 10, fontWeight: 700, color: "#16a34a", textTransform: "uppercase", letterSpacing: ".05em", padding: "4px 0 3px" }}>▲ Income</div>
           {[["Dividends received", nav.dividends], ["Interest received", nav.interest > 0 ? nav.interest : 0]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
@@ -206,6 +200,18 @@ export default function CashTab({ data }: { data: ParsedData }) {
               <span>Unallocated diff</span><span>{fmtCcy(reconDiff, account.currency)}</span>
             </div>
           )}
+
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#0891b2", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>Cash</div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
+            <span style={{ color: "#6b7280" }}>Available cash ({account.currency})</span>
+            <span className={availableCash > 0 ? "pos" : "muted"} style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
+          </div>
+          {availableCcys.filter(b => b.currency !== account.currency).map(b => (
+            <div key={b.currency} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0 3px 16px", fontSize: 12, borderBottom: "1px solid #f9fafb", color: "#9ca3af" }}>
+              <span>{fmtNum(b.endingCash, 2)} {b.currency}</span>
+              <span>= {fmtCcy(b.endingCash * b.fxRate, account.currency)}</span>
+            </div>
+          ))}
 
           <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", fontSize: 14, borderTop: "2px solid #e5e7eb", marginTop: 6, background: "#eff6ff", borderRadius: 5 }}>
             <span style={{ fontWeight: 700, color: "#374151" }}>Profit / Loss</span>
