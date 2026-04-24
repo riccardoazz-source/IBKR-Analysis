@@ -3,7 +3,6 @@ import { useState, useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine, Legend } from "recharts";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtPct, fmtDateS, dayKey } from "@/lib/formatters";
-import { computeTWR, modDietz } from "@/lib/math";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData, Benchmarks } from "@/lib/types";
 
@@ -36,58 +35,52 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
   const from = parseIBDate(account.fromDate) || new Date(new Date().getFullYear(), 0, 1);
   const to = parseIBDate(account.toDate) || new Date();
 
-  const { twr } = useMemo(
-    () => computeTWR(dailyNav, nav.startingValue || 0, deposits, dividends, transfers),
-    [dailyNav, nav.startingValue, deposits, dividends, transfers]
-  );
-
-  const totalDivs = dividends.reduce((s, d) => s + d.amount * d.fxRate, 0);
   const startV = (nav.startingValue || 0) + (nav.assetTransfers || 0);
-  const perfNoDiv = modDietz(
-    startV,
-    nav.endingValue - totalDivs,
-    deposits.map((d) => ({ date: d.date || parseIBDate(d.dateTime), amount: d.amount * d.fxRate })),
-    from,
-    to
-  );
+  const totalDivs = dividends.reduce((s, d) => s + d.amount * d.fxRate, 0);
+  const depNet = deposits.reduce((s, d) => s + d.amount * d.fxRate, 0);
+  const transferNet = (transfers || []).reduce((s, t) => s + t.amount * t.fxRate, 0);
+  const totalInvested = startV + depNet + transferNet;
+  const simpleReturnTotal = totalInvested > 0 ? (nav.endingValue - totalInvested) / totalInvested : null;
+  const simpleReturnPrice = totalInvested > 0 ? (nav.endingValue - totalDivs - totalInvested) / totalInvested : null;
 
-  // Build portfolio daily cumulative-return series (total + price, same logic as PortfolioChart)
+  // Build portfolio daily simple-return series — same logic as PortfolioChart
   const portfolioSeries = useMemo(() => {
     if (!dailyNav || dailyNav.length < 2) return [];
-    const sN = nav.startingValue || 0;
-    const depMap: Record<string, number> = {};
+    // Detect asset transfer arrival from daily NAV
+    const assetAmt = nav.assetTransfers || 0;
+    let assetTs = -Infinity;
+    if (assetAmt > 0) {
+      const threshold = (nav.startingValue || 0) + assetAmt * 0.7;
+      const found = dailyNav.find(pt => pt.total >= threshold);
+      assetTs = found ? +found.date : -Infinity;
+    }
+    const investedAt = (ts: number) => {
+      let inv = nav.startingValue || 0;
+      if (ts >= assetTs) inv += assetAmt;
+      deposits.filter(d => d.amount > 0).forEach(d => {
+        const dt = d.date || parseIBDate(d.dateTime);
+        if (dt && +dt <= ts) inv += d.amount * d.fxRate;
+      });
+      (transfers || []).forEach(t => {
+        if (t.date && +t.date <= ts) inv += t.amount * t.fxRate;
+      });
+      return inv;
+    };
     const divMap: Record<string, number> = {};
-    deposits.forEach((d) => {
-      const dt = d.date || parseIBDate(d.dateTime);
-      if (!dt) return;
-      const k = dayKey(+dt);
-      depMap[k] = (depMap[k] || 0) + d.amount * d.fxRate;
-    });
-    (transfers || []).forEach((t) => {
-      if (!t.date) return;
-      const k = dayKey(+t.date);
-      depMap[k] = (depMap[k] || 0) + t.amount * t.fxRate;
-    });
     dividends.forEach((d) => {
       const dt = d.date || parseIBDate(d.dateTime);
       if (!dt) return;
       const k = dayKey(+dt);
       divMap[k] = (divMap[k] || 0) + d.amount * d.fxRate;
     });
-    let cT = 1, cN = 1;
-    return dailyNav.map((pt, i) => {
+    let cumDiv = 0;
+    return dailyNav.map((pt) => {
       const k = dayKey(+pt.date);
-      const pN = i === 0 ? sN : dailyNav[i - 1].total;
-      const dep = depMap[k] || 0;
-      const div = divMap[k] || 0;
-      const den = pN + Math.max(0, dep);
-      if (den > 0 && isFinite(pt.total)) {
-        const r = (pt.total - pN - dep) / den;
-        if (isFinite(r) && r > -0.9 && r < 2) cT *= 1 + r;
-        const rn = (pt.total - div - pN - dep) / den;
-        if (isFinite(rn) && rn > -0.9 && rn < 2) cN *= 1 + rn;
-      }
-      return { date: k, label: fmtDateS(pt.date) ?? k, cum: +((cT - 1) * 100).toFixed(2), cumNoDiv: +((cN - 1) * 100).toFixed(2) };
+      cumDiv += divMap[k] || 0;
+      const inv = investedAt(+pt.date);
+      const simpleTotal = inv > 0 ? +((pt.total - inv) / inv * 100).toFixed(2) : 0;
+      const simplePrice = inv > 0 ? +((pt.total - cumDiv - inv) / inv * 100).toFixed(2) : 0;
+      return { date: k, label: fmtDateS(pt.date) ?? k, cum: simpleTotal, cumNoDiv: simplePrice };
     });
   }, [dailyNav, nav, deposits, dividends, transfers]);
 
@@ -283,8 +276,8 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       {/* Comparison table */}
       {(() => {
         const lastPt = filteredChartData[filteredChartData.length - 1];
-        const pTotal = lastPt != null && typeof lastPt.portfolio === "number" ? lastPt.portfolio / 100 : twr;
-        const pPrice = lastPt != null && typeof lastPt.portfolioNoDiv === "number" ? lastPt.portfolioNoDiv / 100 : perfNoDiv;
+        const pTotal = lastPt != null && typeof lastPt.portfolio === "number" ? lastPt.portfolio / 100 : simpleReturnTotal;
+        const pPrice = lastPt != null && typeof lastPt.portfolioNoDiv === "number" ? lastPt.portfolioNoDiv / 100 : simpleReturnPrice;
         return (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>

@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, Fragment } from "react";
 import Stat from "@/components/Stat";
 import { fmtCcy, fmtNum, fmtPct, fmtDate } from "@/lib/formatters";
-import { computeTWR, posXirr, xirr } from "@/lib/math";
+import { posXirr, xirr } from "@/lib/math";
 import { parseIBDate } from "@/lib/parser";
 import type { ParsedData } from "@/lib/types";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -167,16 +167,13 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [expandedClosed, setExpandedClosed] = useState<string | null>(null);
 
-  const { twr } = useMemo(
-    () => computeTWR(dailyNav, nav.startingValue || 0, deposits, dividends, transfers),
-    [dailyNav, nav.startingValue, deposits, dividends, transfers]
-  );
-
   const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const costTotal = positions.reduce((s, p) => s + p.costBasis * p.fxRate, 0);
   const pnlTotal = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
   const totalDivs = dividends.reduce((s, d) => s + d.amount * d.fxRate, 0);
   const startV = (nav.startingValue || 0) + (nav.assetTransfers || 0);
+  const totalInvested = startV + deposits.reduce((s, d) => s + d.amount * d.fxRate, 0) + transfers.reduce((s, t) => s + t.amount * t.fxRate, 0);
+  const simpleReturn = totalInvested > 0 ? (nav.endingValue - totalInvested) / totalInvested : null;
 
   const divsBySymbol = useMemo(() => dividends.reduce<Record<string, number>>((m, d) => {
     if (d.symbol) m[d.symbol] = (m[d.symbol] || 0) + d.amount * d.fxRate;
@@ -282,7 +279,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
       <div className="g4">
         <Stat label="Starting Capital" value={fmtCcy(startV, account.currency)} sub="opening NAV + transfers" />
         <Stat label="Current NAV" value={fmtCcy(nav.endingValue, account.currency)} />
-        <Stat label="Total Return (incl. div.)" value={fmtPct(twr)} color={twr != null ? (twr >= 0 ? "#16a34a" : "#dc2626") : undefined} sub="Time-weighted · same as chart" />
+        <Stat label="Total Return (incl. div.)" value={fmtPct(simpleReturn)} color={simpleReturn != null ? (simpleReturn >= 0 ? "#16a34a" : "#dc2626") : undefined} sub="(NAV − invested) / invested" />
         <Stat label="Portfolio XIRR (all)" value={portIrr != null ? fmtPct(portIrr) : "—"} sub={irrNote || `open + closed · NAV-based · ${Math.round(days)}d`} color={portIrr != null ? (portIrr >= 0 ? "#16a34a" : "#dc2626") : undefined} size="lg" />
       </div>
       <div className="g2">

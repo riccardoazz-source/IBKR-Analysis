@@ -19,17 +19,29 @@ export default function PortfolioChart({ data }: Props) {
   const { nav, deposits, dividends, account, dailyNav, transfers } = data;
   const hasDailyData = dailyNav && dailyNav.length >= 2;
 
-  const investedAt = useMemo(() => (ts: number) => {
-    let inv = (nav.startingValue || 0) + (nav.assetTransfers || 0);
-    deposits.filter((d) => d.amount > 0).forEach((d) => {
-      const dt = d.date || parseIBDate(d.dateTime);
-      if (dt && +dt <= ts) inv += d.amount * d.fxRate;
-    });
-    (transfers || []).forEach((t) => {
-      if (t.date && +t.date <= ts) inv += t.amount * t.fxRate;
-    });
-    return inv;
-  }, [nav, deposits, transfers]);
+  const investedAt = useMemo(() => {
+    // nav.assetTransfers has no date — infer arrival from first daily NAV point
+    // that reaches the expected level, to avoid a false -100% spike at period start.
+    const assetAmt = nav.assetTransfers || 0;
+    let assetTs = -Infinity;
+    if (assetAmt > 0 && dailyNav.length > 0) {
+      const threshold = (nav.startingValue || 0) + assetAmt * 0.7;
+      const found = dailyNav.find(pt => pt.total >= threshold);
+      assetTs = found ? +found.date : -Infinity;
+    }
+    return (ts: number) => {
+      let inv = nav.startingValue || 0;
+      if (ts >= assetTs) inv += assetAmt;
+      deposits.filter((d) => d.amount > 0).forEach((d) => {
+        const dt = d.date || parseIBDate(d.dateTime);
+        if (dt && +dt <= ts) inv += d.amount * d.fxRate;
+      });
+      (transfers || []).forEach((t) => {
+        if (t.date && +t.date <= ts) inv += t.amount * t.fxRate;
+      });
+      return inv;
+    };
+  }, [nav, deposits, transfers, dailyNav]);
 
   const dailyPts = useMemo(() => {
     if (!hasDailyData) return null;
