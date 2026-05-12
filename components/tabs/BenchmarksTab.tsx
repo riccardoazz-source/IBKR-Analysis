@@ -25,6 +25,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
   const [log, setLog] = useState("");
   const [period, setPeriod] = useState("MAX");
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [retType, setRetType] = useState<"simple" | "twr">("simple");
   const toggleBench = (key: string) => setHidden(prev => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
@@ -84,10 +85,51 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
     });
   }, [dailyNav, nav, deposits, dividends, transfers]);
 
+  // TWR daily series for portfolio (chain-linked sub-period returns)
+  const twrPortfolioSeries = useMemo(() => {
+    if (!dailyNav || dailyNav.length < 2) return [];
+    const depMap: Record<string, number> = {};
+    const divMap: Record<string, number> = {};
+    deposits.forEach(d => {
+      const dt = d.date || parseIBDate(d.dateTime);
+      if (!dt) return;
+      const k = dayKey(+dt);
+      depMap[k] = (depMap[k] || 0) + d.amount * d.fxRate;
+    });
+    (transfers || []).forEach(t => {
+      if (!t.date) return;
+      const k = dayKey(+t.date);
+      depMap[k] = (depMap[k] || 0) + t.amount * t.fxRate;
+    });
+    dividends.forEach(d => {
+      const dt = d.date || parseIBDate(d.dateTime);
+      if (!dt) return;
+      const k = dayKey(+dt);
+      divMap[k] = (divMap[k] || 0) + d.amount * d.fxRate;
+    });
+    const startNAV = nav.startingValue || 0;
+    let cumTWR = 1, cumNoDiv = 1;
+    return dailyNav.map((pt, i) => {
+      const k = dayKey(+pt.date);
+      const prevNav = i === 0 ? startNAV : dailyNav[i - 1].total;
+      const dep = depMap[k] || 0;
+      const div = divMap[k] || 0;
+      const denom = prevNav + Math.max(0, dep);
+      if (denom > 0 && isFinite(pt.total)) {
+        const r = (pt.total - prevNav - dep) / denom;
+        if (isFinite(r) && r > -0.9 && r < 2) cumTWR *= 1 + r;
+        const rnd = (pt.total - div - prevNav - dep) / denom;
+        if (isFinite(rnd) && rnd > -0.9 && rnd < 2) cumNoDiv *= 1 + rnd;
+      }
+      return { date: k, label: fmtDateS(pt.date) ?? k, cum: +((cumTWR - 1) * 100).toFixed(2), cumNoDiv: +((cumNoDiv - 1) * 100).toFixed(2) };
+    });
+  }, [dailyNav, nav, deposits, dividends, transfers]);
+
   // Merge portfolio + benchmarks into a single chart dataset aligned by date
   const chartData = useMemo(() => {
-    if (!portfolioSeries.length) return [];
-    return portfolioSeries.map((pt) => {
+    const activeSeries = retType === "twr" ? twrPortfolioSeries : portfolioSeries;
+    if (!activeSeries.length) return [];
+    return activeSeries.map((pt) => {
       const row: Record<string, unknown> = { date: pt.date, label: pt.label, portfolio: pt.cum, portfolioNoDiv: pt.cumNoDiv };
       if (benchmarks) {
         BENCH_DISPLAY.forEach((bm) => {
@@ -105,7 +147,7 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       }
       return row;
     });
-  }, [portfolioSeries, benchmarks]);
+  }, [portfolioSeries, twrPortfolioSeries, retType, benchmarks]);
 
   const load = async () => {
     setLoading(true);
@@ -196,7 +238,13 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       {hasChart && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-            <div className="st" style={{ marginBottom: 0 }}>Performance chart — Portfolio vs Benchmarks</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div className="st" style={{ marginBottom: 0 }}>Performance chart — Portfolio vs Benchmarks</div>
+              <div style={{ display: "flex", gap: 3 }}>
+                <button className={`btn-s${retType === "simple" ? " act" : ""}`} onClick={() => setRetType("simple")} title="Simple return: (NAV − invested) / invested">Simple</button>
+                <button className={`btn-s${retType === "twr" ? " act" : ""}`} onClick={() => setRetType("twr")} title="Time-Weighted Return (chain-linked sub-period returns)">TWR</button>
+              </div>
+            </div>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
               {["5D", "1M", "6M", "YTD", "1Y", "5Y", "MAX"].map((p) => (
                 <button key={p} className={`btn-s${period === p ? " act" : ""}`} onClick={() => setPeriod(p)}>{p}</button>
@@ -276,12 +324,19 @@ export default function BenchmarksTab({ data, benchmarks, setBenchmarks }: Props
       {/* Comparison table */}
       {(() => {
         const lastPt = filteredChartData[filteredChartData.length - 1];
-        const pTotal = lastPt != null && typeof lastPt.portfolio === "number" ? lastPt.portfolio / 100 : simpleReturnTotal;
-        const pPrice = lastPt != null && typeof lastPt.portfolioNoDiv === "number" ? lastPt.portfolioNoDiv / 100 : simpleReturnPrice;
+        const twrLastTotal = twrPortfolioSeries.length ? twrPortfolioSeries[twrPortfolioSeries.length - 1].cum / 100 : null;
+        const twrLastPrice = twrPortfolioSeries.length ? twrPortfolioSeries[twrPortfolioSeries.length - 1].cumNoDiv / 100 : null;
+        const fallbackTotal = retType === "twr" ? twrLastTotal : simpleReturnTotal;
+        const fallbackPrice = retType === "twr" ? twrLastPrice : simpleReturnPrice;
+        const pTotal = lastPt != null && typeof lastPt.portfolio === "number" ? lastPt.portfolio / 100 : fallbackTotal;
+        const pPrice = lastPt != null && typeof lastPt.portfolioNoDiv === "number" ? lastPt.portfolioNoDiv / 100 : fallbackPrice;
         return (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-            <div className="st" style={{ marginBottom: 0 }}>Return comparison table</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="st" style={{ marginBottom: 0 }}>Return comparison table</div>
+              <span style={{ fontSize: 10, color: "#6b7280", background: "#f3f4f6", padding: "2px 7px", borderRadius: 99 }}>{retType === "twr" ? "TWR" : "Simple"}</span>
+            </div>
             <span style={{ fontSize: 11, color: "#9ca3af" }}>Period: {period}</span>
           </div>
           <div className="tbl-x"><table>

@@ -7,6 +7,7 @@ import {
 import { fmtCcy, fmtNum, fmtPct, fmtDateS, dayKey } from "@/lib/formatters";
 import type { ParsedData } from "@/lib/types";
 import { parseIBDate } from "@/lib/parser";
+import { computeTWR } from "@/lib/math";
 
 interface Props {
   data: ParsedData;
@@ -103,6 +104,11 @@ export default function PortfolioChart({ data }: Props) {
     return r.length >= 2 ? r : dailyPts;
   }, [dailyPts, period]);
 
+  const twr = useMemo(() => {
+    if (!hasDailyData) return { twr: null, noDiv: null };
+    return computeTWR(dailyNav, nav.startingValue || 0, deposits, dividends, transfers || []);
+  }, [dailyNav, nav, deposits, dividends, transfers, hasDailyData]);
+
   const last = filtered[filtered.length - 1];
 
   if (!hasDailyData) return (
@@ -188,6 +194,16 @@ export default function PortfolioChart({ data }: Props) {
                 <Line type="monotone" dataKey="simplePrice" stroke="#f59e0b" strokeWidth={2} dot={false} strokeDasharray="5 3" connectNulls name="simplePrice" />
               </LineChart>
             </ResponsiveContainer>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6, padding: "5px 0", borderTop: "1px solid #f3f4f6", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "#9ca3af", marginRight: 4 }}>TWR (full period):</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: twr.twr != null ? (twr.twr >= 0 ? "#16a34a" : "#dc2626") : "#9ca3af" }}>
+                {fmtPct(twr.twr)} incl. div.
+              </span>
+              <span style={{ fontSize: 10, color: "#d1d5db" }}>·</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: twr.noDiv != null ? (twr.noDiv >= 0 ? "#f59e0b" : "#dc2626") : "#9ca3af" }}>
+                {fmtPct(twr.noDiv)} excl. div.
+              </span>
+            </div>
           </>
         )}
       </div>
