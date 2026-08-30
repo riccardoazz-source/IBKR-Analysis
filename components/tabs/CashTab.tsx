@@ -17,11 +17,11 @@ export default function CashTab({ data }: { data: ParsedData }) {
   const capitalBase = (nav.startingValue || 0) + (nav.assetTransfers || 0) + totalNetCash;
 
   // IBKR's fifoPnl figures are already net of commissions: closing commissions are
-  // deducted from realized P&L, opening ones are capitalised into cost basis. Since
-  // commissions get their own cost line below, add them back here — otherwise the
-  // chain subtracts them twice.
+  // deducted from realized P&L, opening ones are capitalised into cost basis. So the
+  // P&L rows below are reported exactly as the Trades and Holdings tabs report them,
+  // and commissions are shown as a memo rather than subtracted a second time.
   const commissions = nav.commissions || 0; // negative
-  const realizedPnL = trades.reduce((s, t) => s + t.fifoPnlRealized * t.fxRate, 0) - commissions;
+  const realizedPnL = trades.reduce((s, t) => s + t.fifoPnlRealized * t.fxRate, 0);
   const unrealizedPnL = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
   const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const marginTotal = Math.max(0, -(nav.endingValue - totalPosV));
@@ -79,8 +79,13 @@ export default function CashTab({ data }: { data: ParsedData }) {
 
   const filteredTotal = filteredCashRows.reduce((s, r) => s + r.amount, 0);
 
-  const availableCcys = Object.values(cashByCcy || {}).filter(b => b.endingCash > 0);
-  const availableCash = availableCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
+  // Every currency, debit balances included. Netting them is the whole point of a
+  // base-currency cash figure — dropping the negative ones overstates free cash and
+  // hides a real debt behind a larger balance in another currency.
+  const cashCcys = Object.values(cashByCcy || {})
+    .filter((b) => Math.abs(b.endingCash) > 0.005)
+    .sort((a, b) => b.endingCash * b.fxRate - a.endingCash * a.fxRate);
+  const availableCash = cashCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
 
   // Cash is not a term of this chain: NAV = positions + cash, and the chain below
   // already rebuilds the whole NAV from capital + income − costs + P&L. Adding
@@ -90,7 +95,6 @@ export default function CashTab({ data }: { data: ParsedData }) {
     (nav.dividends || 0) +
     (nav.interest || 0) +
     (nav.withholdingTax || 0) +
-    (nav.commissions || 0) +
     realizedPnL +
     unrealizedPnL +
     (nav.fxTranslation || 0) +
@@ -98,9 +102,9 @@ export default function CashTab({ data }: { data: ParsedData }) {
     (nav.other || 0);
   const reconDiff = nav.endingValue - reconComputed;
 
-  const availableSub = availableCcys.length === 0
+  const availableSub = cashCcys.length === 0
     ? "fully margined / no free cash"
-    : availableCcys.map(b => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ");
+    : cashCcys.map(b => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -188,15 +192,21 @@ export default function CashTab({ data }: { data: ParsedData }) {
           ))}
 
           <div style={{ fontSize: 10, fontWeight: 700, color: "#dc2626", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>▼ Costs</div>
-          {[["Withholding tax", nav.withholdingTax], ["Commissions", nav.commissions], ["Margin interest", nav.interest < 0 ? nav.interest : 0]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
+          {[["Withholding tax", nav.withholdingTax], ["Margin interest", nav.interest < 0 ? nav.interest : 0]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
             <div key={String(l)} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
               <span style={{ color: "#6b7280" }}>{l}</span>
               <span className="neg" style={{ fontWeight: 500 }}>{fmtCcy(v as number, account.currency)}</span>
             </div>
           ))}
+          {Math.abs(commissions) > 0.005 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb", color: "#9ca3af" }}>
+              <span>Commissions <span style={{ fontSize: 10 }}>· memo, already inside P&amp;L below</span></span>
+              <span style={{ fontWeight: 500 }}>{fmtCcy(commissions, account.currency)}</span>
+            </div>
+          )}
 
           <div style={{ fontSize: 10, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>P&amp;L</div>
-          {[["Realized P&L (closed trades, gross)", realizedPnL], ["Unrealized P&L (open positions)", unrealizedPnL], ["FX translation", nav.fxTranslation], ["Other", (nav.otherFees || 0) + (nav.other || 0)]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
+          {[["Realized P&L (closed trades)", realizedPnL], ["Unrealized P&L (open positions)", unrealizedPnL], ["FX translation", nav.fxTranslation], ["Other", (nav.otherFees || 0) + (nav.other || 0)]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
             <div key={String(l)} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
               <span style={{ color: "#6b7280" }}>{l}</span>
               <span className={(v as number) >= 0 ? "pos" : "neg"} style={{ fontWeight: 500 }}>{fmtCcy(v as number, account.currency)}</span>
@@ -213,13 +223,13 @@ export default function CashTab({ data }: { data: ParsedData }) {
             Cash <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, color: "#9ca3af" }}>· memo, already part of NAV</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
-            <span style={{ color: "#6b7280" }}>Available cash ({account.currency})</span>
-            <span className={availableCash > 0 ? "pos" : "muted"} style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
+            <span style={{ color: "#6b7280" }}>Net cash ({account.currency})</span>
+            <span className={availableCash >= 0 ? "pos" : "neg"} style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
           </div>
-          {availableCcys.filter(b => b.currency !== account.currency).map(b => (
-            <div key={b.currency} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0 3px 16px", fontSize: 12, borderBottom: "1px solid #f9fafb", color: "#9ca3af" }}>
-              <span>{fmtNum(b.endingCash, 2)} {b.currency}</span>
-              <span>= {fmtCcy(b.endingCash * b.fxRate, account.currency)}</span>
+          {cashCcys.map(b => (
+            <div key={b.currency} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0 3px 16px", fontSize: 12, borderBottom: "1px solid #f9fafb", color: b.endingCash < 0 ? "#dc2626" : "#9ca3af" }}>
+              <span>{fmtNum(b.endingCash, 2)} {b.currency}{b.endingCash < 0 ? " · debit" : ""}</span>
+              <span>{b.currency === account.currency ? "" : "= "}{fmtCcy(b.endingCash * b.fxRate, account.currency)}</span>
             </div>
           ))}
 

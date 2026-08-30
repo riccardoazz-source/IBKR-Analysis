@@ -14,6 +14,13 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
   const grossLong = positions.filter((p) => p.positionValue > 0).reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const marginEUR = Math.max(0, -(nav.endingValue - totalPosV));
+
+  // A debit balance in one currency funded by cash in another is not leverage, but
+  // it is still a debt — reporting a flat "no debt" hides it entirely.
+  const debitCcys = Object.values(data.cashByCcy || {}).filter((b) => b.endingCash < -0.005);
+  const debitBase = debitCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
+  const ltvLabel = marginEUR > 0 ? "⚠ leverage" : debitCcys.length ? "FX debit balance" : "no debt";
+  const ltvColor = marginEUR > 0 ? "#d97706" : debitCcys.length ? "#0891b2" : "#16a34a";
   const total = positions.reduce((s, p) => s + Math.abs(p.positionValue * p.fxRate), 0) || 1;
 
   const byCat = positions.reduce<Record<string, number>>((m, p) => {
@@ -43,7 +50,18 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
       <div className="g3">
         <Stat label="Starting Capital" value={fmtCcy(startV, account.currency)} sub="opening NAV + asset transfers" />
         <Stat label="Net Cash In / Out" value={fmtCcy(totalCash, account.currency)} sub={`${deposits.filter((d) => d.amount > 0).length} deposits · ${(data.transfers || []).length} transfers`} />
-        <Stat label={`LTV · ${marginEUR > 0 ? "⚠ leverage" : "no debt"}`} value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossLong / nav.endingValue : null, 2) + "x" : "—"} color={marginEUR > 0 ? "#d97706" : "#16a34a"} sub={marginEUR > 0 ? `~${fmtCcy(marginEUR, account.currency)} margin debt` : "no leverage"} />
+        <Stat
+          label={`LTV · ${ltvLabel}`}
+          value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossLong / nav.endingValue : null, 2) + "x" : debitCcys.length ? fmtCcy(debitBase, account.currency) : "—"}
+          color={ltvColor}
+          sub={
+            marginEUR > 0
+              ? `~${fmtCcy(marginEUR, account.currency)} margin debt`
+              : debitCcys.length
+                ? `${debitCcys.map((b) => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ")} — covered by cash in other currencies`
+                : "no leverage"
+          }
+        />
       </div>
 
       <PortfolioChart data={data} />

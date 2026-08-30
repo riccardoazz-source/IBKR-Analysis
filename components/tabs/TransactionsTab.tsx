@@ -4,7 +4,7 @@ import { fmtCcy, fmtNum, fmtDate } from "@/lib/formatters";
 import type { ParsedData } from "@/lib/types";
 
 export default function TransactionsTab({ data }: { data: ParsedData }) {
-  const { cashTxns, trades, account } = data;
+  const { cashTxns, trades, account, nav } = data;
   const [section, setSection] = useState<"trades" | "cash">("trades");
   const [cashQ, setCashQ] = useState("");
   const [tradeQ, setTradeQ] = useState("");
@@ -23,7 +23,13 @@ export default function TransactionsTab({ data }: { data: ParsedData }) {
   }, [trades]);
 
   const totalRealizedBase = realizedBySymbol.reduce((s, r) => s + r.totalPnlBase, 0);
-  const totalCommBase = trades.reduce((s, t) => s + t.commission * t.fxRate, 0);
+  // Commissions are a memo here, not a deduction: IBKR's fifoPnlRealized is already
+  // net of them. Trade rows only carry a commission when the Flex query includes
+  // that column, so fall back to the account-level total rather than showing zero
+  // and implying the trading was free.
+  const tradeCommBase = trades.reduce((s, t) => s + t.commission * t.fxRate, 0);
+  const commFromTrades = Math.abs(tradeCommBase) > 0.005;
+  const totalCommBase = commFromTrades ? tradeCommBase : (nav.commissions || 0);
   const symbolsWithPnl = realizedBySymbol.filter((r) => r.totalPnl !== 0);
 
   const filteredTrades = useMemo(() => {
@@ -58,8 +64,11 @@ export default function TransactionsTab({ data }: { data: ParsedData }) {
                   <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Total Realized P&L</div>
                   <div style={{ fontSize: 36, fontWeight: 800, color: totalRealizedBase >= 0 ? "#16a34a" : "#dc2626", lineHeight: 1 }}>{totalRealizedBase >= 0 ? "▲" : "▼"} {fmtCcy(Math.abs(totalRealizedBase), account.currency)}</div>
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
-                    Net after commissions: <strong style={{ color: (totalRealizedBase + totalCommBase) >= 0 ? "#16a34a" : "#dc2626" }}>{fmtCcy(totalRealizedBase + totalCommBase, account.currency)}</strong>
-                    <span style={{ marginLeft: 12, color: "#9ca3af" }}>Commissions: {fmtCcy(totalCommBase, account.currency)}</span>
+                    Already net of commissions
+                    <span style={{ marginLeft: 12, color: "#9ca3af" }}>
+                      Commissions paid: {fmtCcy(totalCommBase, account.currency)}
+                      {!commFromTrades && Math.abs(totalCommBase) > 0.005 ? " · account total" : ""}
+                    </span>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 12, textAlign: "center", flexWrap: "wrap" }}>
@@ -119,7 +128,7 @@ export default function TransactionsTab({ data }: { data: ParsedData }) {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot><tr><td colSpan={6}>TOTALS</td><td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(totalCommBase, account.currency)}</td><td style={{ textAlign: "right" }} className={totalRealizedBase >= 0 ? "pos" : "neg"}>{fmtCcy(totalRealizedBase, account.currency)}</td><td></td></tr></tfoot>
+                    <tfoot><tr><td colSpan={6}>TOTALS</td><td style={{ textAlign: "right", color: "#dc2626" }}>{fmtCcy(tradeCommBase, account.currency)}</td><td style={{ textAlign: "right" }} className={totalRealizedBase >= 0 ? "pos" : "neg"}>{fmtCcy(totalRealizedBase, account.currency)}</td><td></td></tr></tfoot>
                   </table>
                 </div>
               </div>

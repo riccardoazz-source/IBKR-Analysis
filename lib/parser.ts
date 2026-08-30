@@ -18,6 +18,24 @@ export function parseIBDateTime(s: string | null | undefined): Date | null {
   );
 }
 
+// ChangeInNAV components that shift the NAV but get no dedicated row in the
+// reconciliation. They are folded into "other" so they cannot silently vanish.
+// Deliberately excluded: depositsWithdrawals / assetTransfers / internalTransfers
+// (rebuilt from cash transactions) and mtm / changeInUnrealized (would double
+// count against the trade- and position-derived P&L).
+const NAV_EXTRA = [
+  "changeInDividendAccruals",
+  "changeInInterestAccruals",
+  "paymentInLieuOfDividends",
+  "corporateActionProceeds",
+  "advisorFees",
+  "clientFees",
+  "softDollars",
+  "salesTax",
+  "otherIncome",
+  "linkingAdjustments",
+];
+
 export function parseFlexXML(xml: string): ParsedData {
   const doc = new DOMParser().parseFromString(xml, "text/xml");
   const all = [...doc.querySelectorAll("FlexStatement")];
@@ -84,6 +102,14 @@ export function parseFlexXML(xml: string): ParsedData {
     nav.other +=
       parseFloat(nv.getAttribute("other") || "0") +
       parseFloat(nv.getAttribute("netFxTrading") || "0");
+    // These move the NAV but have no line of their own. Dropping them silently is
+    // what turns a small real effect into an unexplained reconciliation gap —
+    // dividend and interest accruals in particular, which a margin account with
+    // distributing ETFs carries all the time.
+    NAV_EXTRA.forEach((k) => {
+      const v = parseFloat(nv.getAttribute(k) || "0");
+      if (isFinite(v)) nav.other += v;
+    });
   });
 
   const dailyNav: DailyNavPoint[] = Object.entries(navMap)
@@ -193,7 +219,14 @@ export function parseFlexXML(xml: string): ParsedData {
         fifoPnlRealized: parseFloat(el.getAttribute("fifoPnlRealized") || "0"),
         currency: el.getAttribute("currency") || "",
         fxRate: parseFloat(el.getAttribute("fxRateToBase") || "1"),
-        commission: parseFloat(el.getAttribute("ibCommission") || "0"),
+        // Only present when the Flex query includes the commission column; the
+        // account-level ChangeInNAV total is the fallback where it is missing.
+        commission: parseFloat(
+          el.getAttribute("ibCommission") ??
+          el.getAttribute("commission") ??
+          el.getAttribute("brokerCommission") ??
+          "0"
+        ),
         transactionID: el.getAttribute("transactionID") || "",
       }))
     )
