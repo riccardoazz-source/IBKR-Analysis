@@ -91,8 +91,15 @@ export function parseFlexXML(xml: string): ParsedData {
     .filter((p) => p.date && isFinite(p.total))
     .sort((a, b) => +a.date - +b.date);
 
+  // The newest statement that reports an OpenPositions *section* is authoritative,
+  // including when that section is empty because everything has been sold. Looking
+  // for OpenPosition rows instead would fall back to an older statement and
+  // resurrect positions that are already closed.
+  const rev = [...all].reverse();
   const lastPos =
-    [...all].reverse().find((s) => s.querySelector("OpenPosition")) || last;
+    rev.find((s) => s.querySelector("OpenPositions")) ||
+    rev.find((s) => s.querySelector("OpenPosition")) ||
+    last;
 
   const positions: Position[] = [...lastPos.querySelectorAll("OpenPosition")].map((el) => ({
     symbol: el.getAttribute("symbol") || "",
@@ -110,7 +117,7 @@ export function parseFlexXML(xml: string): ParsedData {
     unrealizedPnl: parseFloat(el.getAttribute("fifoPnlUnrealized") || "0"),
     pctOfNAV: parseFloat(el.getAttribute("percentOfNAV") || "0"),
     reportDate: el.getAttribute("reportDate") || "",
-  }));
+  })).filter((p) => p.position !== 0);
 
   const cashByCcy: Record<string, { currency: string; endingCash: number; fxRate: number }> = {};
   [...last.querySelectorAll("CashReportCurrency")].forEach((el) => {

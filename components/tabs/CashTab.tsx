@@ -9,13 +9,19 @@ import type { ParsedData } from "@/lib/types";
 export default function CashTab({ data }: { data: ParsedData }) {
   const { nav, deposits, account, cashByCcy, positions, accountTransferTotal, transfers, trades } = data;
 
-  const depPositive = deposits.filter((d) => d.amount > 0).reduce((s, d) => s + d.amount * d.fxRate, 0);
   const depNet = deposits.reduce((s, d) => s + d.amount * d.fxRate, 0);
   const transferNet = accountTransferTotal || 0;
   const totalNetCash = depNet + transferNet;
-  const capitalBase = (nav.startingValue || 0) + (nav.assetTransfers || 0) + depPositive + transferNet;
+  // Must match the rows rendered below (starting value + net cash in/out), so use
+  // the net figure — netting out withdrawals — rather than deposits only.
+  const capitalBase = (nav.startingValue || 0) + (nav.assetTransfers || 0) + totalNetCash;
 
-  const realizedPnL = trades.reduce((s, t) => s + t.fifoPnlRealized * t.fxRate, 0);
+  // IBKR's fifoPnl figures are already net of commissions: closing commissions are
+  // deducted from realized P&L, opening ones are capitalised into cost basis. Since
+  // commissions get their own cost line below, add them back here — otherwise the
+  // chain subtracts them twice.
+  const commissions = nav.commissions || 0; // negative
+  const realizedPnL = trades.reduce((s, t) => s + t.fifoPnlRealized * t.fxRate, 0) - commissions;
   const unrealizedPnL = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
   const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const marginTotal = Math.max(0, -(nav.endingValue - totalPosV));
@@ -76,9 +82,11 @@ export default function CashTab({ data }: { data: ParsedData }) {
   const availableCcys = Object.values(cashByCcy || {}).filter(b => b.endingCash > 0);
   const availableCash = availableCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
 
+  // Cash is not a term of this chain: NAV = positions + cash, and the chain below
+  // already rebuilds the whole NAV from capital + income − costs + P&L. Adding
+  // available cash on top would count it twice.
   const reconComputed =
     capitalBase +
-    availableCash +
     (nav.dividends || 0) +
     (nav.interest || 0) +
     (nav.withholdingTax || 0) +
@@ -188,7 +196,7 @@ export default function CashTab({ data }: { data: ParsedData }) {
           ))}
 
           <div style={{ fontSize: 10, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>P&amp;L</div>
-          {[["Realized P&L (closed trades)", realizedPnL], ["Unrealized P&L (open positions)", unrealizedPnL], ["FX translation", nav.fxTranslation], ["Other", (nav.otherFees || 0) + (nav.other || 0)]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
+          {[["Realized P&L (closed trades, gross)", realizedPnL], ["Unrealized P&L (open positions)", unrealizedPnL], ["FX translation", nav.fxTranslation], ["Other", (nav.otherFees || 0) + (nav.other || 0)]].filter((r) => Math.abs((r[1] as number) || 0) > 0.005).map(([l, v]) => (
             <div key={String(l)} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
               <span style={{ color: "#6b7280" }}>{l}</span>
               <span className={(v as number) >= 0 ? "pos" : "neg"} style={{ fontWeight: 500 }}>{fmtCcy(v as number, account.currency)}</span>
@@ -201,7 +209,9 @@ export default function CashTab({ data }: { data: ParsedData }) {
             </div>
           )}
 
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#0891b2", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>Cash</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#0891b2", textTransform: "uppercase", letterSpacing: ".05em", padding: "8px 0 3px" }}>
+            Cash <span style={{ fontWeight: 500, textTransform: "none", letterSpacing: 0, color: "#9ca3af" }}>· memo, already part of NAV</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0 4px 8px", fontSize: 13, borderBottom: "1px solid #f9fafb" }}>
             <span style={{ color: "#6b7280" }}>Available cash ({account.currency})</span>
             <span className={availableCash > 0 ? "pos" : "muted"} style={{ fontWeight: 500 }}>{fmtCcy(availableCash, account.currency)}</span>
