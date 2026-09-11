@@ -135,14 +135,17 @@ export function posXirr(
   const flows: CashFlow[] = [];
   const symT = allTrades.filter((t) => t.symbol === p.symbol);
 
+  // A short carries a negative position and a negative costBasis (cash received on
+  // opening), so these flows are gated on magnitude and keep whatever sign the data
+  // gives them: the opening flow comes out positive for a short, negative for a long.
   if (symT.length === 0) {
-    if (p.costBasis > 0) flows.push({ date: from, amount: -p.costBasis * p.fxRate });
+    if (Math.abs(p.costBasis) > 0.005) flows.push({ date: from, amount: -p.costBasis * p.fxRate });
     else return null;
   } else {
     let netBought = 0;
     symT.forEach((t) => { netBought += t.quantity || 0; });
     const atStart = p.position - netBought;
-    if (atStart > 0.001 && p.costBasis > 0 && p.position > 0) {
+    if (Math.abs(atStart) > 0.001 && Math.abs(p.position) > 1e-9 && Math.abs(p.costBasis) > 0.005) {
       flows.push({ date: from, amount: -(atStart / p.position) * p.costBasis * p.fxRate });
     }
     symT.forEach((t) => {

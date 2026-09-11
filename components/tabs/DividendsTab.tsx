@@ -402,8 +402,10 @@ export default function DividendsTab({ data }: { data: ParsedData }) {
                     Object.entries(amountByDate).forEach(([label, entry]) => {
                       const ps = perShareByDate[label];
                       if (!ps || ps.perShare <= 0) return;
+                      // Negative on a short, where the dividend is paid out rather
+                      // than received — dropping those hid the position entirely.
                       const qty = Math.round(entry.amount / ps.perShare);
-                      if (qty > 0) sharesMap[entry.ts] = { ts: entry.ts, label, qty };
+                      if (qty !== 0) sharesMap[entry.ts] = { ts: entry.ts, label, qty };
                     });
                     const sharesSeries = Object.values(sharesMap).sort((a, b) => a.ts - b.ts);
                     const hasShares = sharesSeries.length >= 1;

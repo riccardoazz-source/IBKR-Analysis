@@ -23,8 +23,10 @@ export default function CashTab({ data }: { data: ParsedData }) {
   const commissions = nav.commissions || 0; // negative
   const realizedPnL = trades.reduce((s, t) => s + t.fifoPnlRealized * t.fxRate, 0);
   const unrealizedPnL = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
-  const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
-  const marginTotal = Math.max(0, -(nav.endingValue - totalPosV));
+  // Gross, not net: a short consumes margin like a long, so netting the two would
+  // report a leveraged book as unlevered.
+  const grossExposure = positions.reduce((s, p) => s + Math.abs(p.positionValue * p.fxRate), 0);
+  const marginTotal = Math.max(0, grossExposure - nav.endingValue);
   const perCcyMargin = Object.values(cashByCcy || {}).filter((b) => b.endingCash < 0);
   const profitLoss = nav.endingValue - capitalBase;
 

@@ -169,6 +169,10 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
 
   const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const costTotal = positions.reduce((s, p) => s + p.costBasis * p.fxRate, 0);
+  // Denominator for the portfolio-level percentages: summing signed cost lets a
+  // short cancel a long and can even drive the total negative, flipping the sign of
+  // the return it reports.
+  const costTotalAbs = positions.reduce((s, p) => s + Math.abs(p.costBasis * p.fxRate), 0);
   const pnlTotal = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
   const totalDivs = dividends.reduce((s, d) => s + d.amount * d.fxRate, 0);
   const startV = (nav.startingValue || 0) + (nav.assetTransfers || 0);
@@ -184,10 +188,13 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     const cE = p.costBasis * p.fxRate;
     const vE = p.positionValue * p.fxRate;
     const pnlE = p.unrealizedPnl * p.fxRate;
-    const pnlPct = cE > 0 ? pnlE / cE : null;
+    // Capital employed is the magnitude of the cost basis: a short's is negative,
+    // and dividing by it would flip the sign of every return it reports.
+    const baseE = Math.abs(cE);
+    const pnlPct = baseE > 0 ? pnlE / baseE : null;
     const dE = divsBySymbol[p.symbol] || 0;
     const gainE = pnlE + dE;
-    const totRetPct = cE > 0 ? gainE / cE : null;
+    const totRetPct = baseE > 0 ? gainE / baseE : null;
     const pIrr = posXirr(p, trades, dividends, from, to);
     return { ...p, cE, vE, pnlE, pnlPct, dE, gainE, totRetPct, pIrr };
   }), [positions, trades, dividends, from, to, divsBySymbol]);
@@ -202,7 +209,16 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     return Object.entries(bySymbol).flatMap(([sym, symTrades]) => {
       const buyTrades = symTrades.filter(t => t.buySell.toUpperCase().includes("BUY"));
       if (!buyTrades.length) return [];
-      const costEur = buyTrades.reduce((s, t) => s + -(t.proceeds + t.commission) * t.fxRate, 0);
+      const buyCost = buyTrades.reduce((s, t) => s + -(t.proceeds + t.commission) * t.fxRate, 0);
+      // Capital employed is the opening side of the round trip. A short opens on the
+      // sell, so charging its return against the buy-back would measure it against
+      // the closing price instead of the capital actually put at risk.
+      const chrono = symTrades.filter(t => t.date).sort((a, b) => +a.date! - +b.date!);
+      const openedShort = chrono.length > 0 && !chrono[0].buySell.toUpperCase().includes("BUY");
+      const sellProceeds = symTrades
+        .filter(t => !t.buySell.toUpperCase().includes("BUY"))
+        .reduce((s, t) => s + (t.proceeds + t.commission) * t.fxRate, 0);
+      const costEur = openedShort && sellProceeds > 0 ? sellProceeds : buyCost;
       if (costEur <= 0) return [];
       const pnlEur = symTrades.reduce((s, t) => s + (t.proceeds + t.commission) * t.fxRate, 0);
       const symDivs = dividends.filter(d => d.symbol === sym && d.date);
@@ -220,7 +236,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
         ...symDivs.filter(d => d.date).map(d => ({ date: d.date!, amount: d.amount * d.fxRate })),
       ].sort((a, b) => +a.date - +b.date);
       const irrVal = flows.some(f => f.amount < 0) && flows.some(f => f.amount > 0) ? xirr(flows) : null;
-      return [{ sym, description: symTrades[0]?.description ?? "", currency: symTrades[0]?.currency ?? account.currency, costEur, pnlEur, divsEur, totalGainEur, pnlPct, totalReturnPct, firstDate, lastDate, holdingDays, irrVal, trades: symTrades, divs: symDivs }];
+      return [{ sym, description: symTrades[0]?.description ?? "", currency: symTrades[0]?.currency ?? account.currency, costEur, pnlEur, divsEur, totalGainEur, pnlPct, totalReturnPct, firstDate, lastDate, holdingDays, irrVal, openedShort, trades: symTrades, divs: symDivs }];
     }).sort((a, b) => b.totalGainEur - a.totalGainEur);
   }, [positions, trades, dividends, account.currency]);
 
@@ -246,12 +262,14 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
     posRows.forEach(p => {
       const symT = trades.filter(t => t.symbol === p.symbol);
       if (symT.length === 0) {
-        if (p.costBasis > 0) flows.push({ date: from, amount: -p.costBasis * p.fxRate });
+        if (Math.abs(p.costBasis) > 0.005) flows.push({ date: from, amount: -p.costBasis * p.fxRate });
       } else {
         let netBought = 0;
         symT.forEach(t => { netBought += t.quantity || 0; });
         const atStart = p.position - netBought;
-        if (atStart > 0.001 && p.costBasis > 0 && p.position > 0)
+        // Gated on magnitude so shorts, whose position and costBasis are both
+        // negative, contribute their opening flow instead of being skipped.
+        if (Math.abs(atStart) > 0.001 && Math.abs(p.position) > 1e-9 && Math.abs(p.costBasis) > 0.005)
           flows.push({ date: from, amount: -(atStart / p.position) * p.costBasis * p.fxRate });
         symT.forEach(t => { if (t.date) flows.push({ date: t.date, amount: (t.proceeds + t.commission) * t.fxRate }); });
       }
@@ -334,6 +352,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                   >
                     <td>
                       <strong>{p.symbol}</strong>
+                      {p.position < 0 && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 4, padding: "1px 4px" }}>SHORT</span>}
                       {p.isin && <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400 }}>{p.isin}</div>}
                     </td>
                     <td style={{ color: "#9ca3af", fontSize: 11 }}>{p.currency}</td>
@@ -379,7 +398,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                 <td style={{ textAlign: "right" }}>{fmtCcy(totalPosV, account.currency)}</td>
                 <td style={{ textAlign: "right" }} className={pnlTotal >= 0 ? "pos" : "neg"}>{fmtCcy(pnlTotal, account.currency)}</td>
                 <td style={{ textAlign: "right" }} className={pnlTotal >= 0 ? "pos" : "neg"}>
-                  <strong>{fmtPct(costTotal > 0 ? pnlTotal / costTotal : null)}</strong>
+                  <strong>{fmtPct(costTotalAbs > 0 ? pnlTotal / costTotalAbs : null)}</strong>
                 </td>
                 <td style={{ textAlign: "right", color: "#9ca3af" }}>—</td>
                 <td style={{ textAlign: "right" }} className="pos">{fmtCcy(totalDivs, account.currency)}</td>
@@ -387,7 +406,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                   {fmtCcy(pnlTotal + totalDivs, account.currency)}
                 </td>
                 <td style={{ textAlign: "right" }} className={(pnlTotal + totalDivs) >= 0 ? "pos" : "neg"}>
-                  <strong>{fmtPct(costTotal > 0 ? (pnlTotal + totalDivs) / costTotal : null)}</strong>
+                  <strong>{fmtPct(costTotalAbs > 0 ? (pnlTotal + totalDivs) / costTotalAbs : null)}</strong>
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <strong className={openPosXirr != null ? (openPosXirr >= 0 ? "pos" : "neg") : "muted"}>
@@ -430,6 +449,7 @@ export default function IRRTab({ data, portIrr, irrNote }: Props) {
                     >
                       <td>
                         <strong>{r.sym}</strong>
+                        {r.openedShort && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 4, padding: "1px 4px" }}>SHORT</span>}
                         {r.description && <div style={{ fontSize: 9, color: "#9ca3af", fontWeight: 400 }}>{r.description}</div>}
                       </td>
                       <td style={{ color: "#9ca3af", fontSize: 11, whiteSpace: "nowrap" }}>

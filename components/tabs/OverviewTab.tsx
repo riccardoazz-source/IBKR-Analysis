@@ -11,9 +11,13 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
   const { positions, nav, account, deposits, transfers } = data;
   const startV = (nav.startingValue || 0) + (nav.assetTransfers || 0);
 
-  const grossLong = positions.filter((p) => p.positionValue > 0).reduce((s, p) => s + p.positionValue * p.fxRate, 0);
-  const totalPosV = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
-  const marginEUR = Math.max(0, -(nav.endingValue - totalPosV));
+  // Leverage has to be measured on gross exposure. Netting a short against a long
+  // shrinks the total and makes a leveraged book report as debt-free — the wrong
+  // direction to be wrong in — when a short consumes margin just as a long does.
+  const grossExposure = positions.reduce((s, p) => s + Math.abs(p.positionValue * p.fxRate), 0);
+  const shortExposure = positions.reduce((s, p) => s + Math.max(0, -(p.positionValue * p.fxRate)), 0);
+  const hasShorts = shortExposure > 0.005;
+  const marginEUR = Math.max(0, grossExposure - nav.endingValue);
 
   // A debit balance in one currency funded by cash in another is not leverage, but
   // it is still a debt — reporting a flat "no debt" hides it entirely.
@@ -21,7 +25,7 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
   const debitBase = debitCcys.reduce((s, b) => s + b.endingCash * b.fxRate, 0);
   const ltvLabel = marginEUR > 0 ? "⚠ leverage" : debitCcys.length ? "FX debit balance" : "no debt";
   const ltvColor = marginEUR > 0 ? "#d97706" : debitCcys.length ? "#0891b2" : "#16a34a";
-  const total = positions.reduce((s, p) => s + Math.abs(p.positionValue * p.fxRate), 0) || 1;
+  const total = grossExposure || 1;
 
   const byCat = positions.reduce<Record<string, number>>((m, p) => {
     const k = p.subCategory || p.assetClass || "Other";
@@ -52,14 +56,16 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
         <Stat label="Net Cash In / Out" value={fmtCcy(totalCash, account.currency)} sub={`${deposits.filter((d) => d.amount > 0).length} deposits · ${(data.transfers || []).length} transfers`} />
         <Stat
           label={`LTV · ${ltvLabel}`}
-          value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossLong / nav.endingValue : null, 2) + "x" : debitCcys.length ? fmtCcy(debitBase, account.currency) : "—"}
+          value={marginEUR > 0 ? fmtNum(nav.endingValue > 0 ? grossExposure / nav.endingValue : null, 2) + "x" : debitCcys.length ? fmtCcy(debitBase, account.currency) : "—"}
           color={ltvColor}
           sub={
             marginEUR > 0
-              ? `~${fmtCcy(marginEUR, account.currency)} margin debt`
+              ? `~${fmtCcy(marginEUR, account.currency)} margin${hasShorts ? ` · ${fmtCcy(shortExposure, account.currency)} short` : ""}`
               : debitCcys.length
                 ? `${debitCcys.map((b) => `${fmtNum(b.endingCash, 2)} ${b.currency}`).join(" · ")} — covered by cash in other currencies`
-                : "no leverage"
+                : hasShorts
+                  ? `${fmtCcy(shortExposure, account.currency)} short · fully covered`
+                  : "no leverage"
           }
         />
       </div>
@@ -82,10 +88,14 @@ export default function OverviewTab({ data }: { data: ParsedData; benchmarks?: B
             </thead>
             <tbody>
               {[...positions].sort((a, b) => Math.abs(b.positionValue * b.fxRate) - Math.abs(a.positionValue * a.fxRate)).map((p, i) => {
-                const pp = p.costBasis > 0 ? p.unrealizedPnl / p.costBasis : null;
+                const base = Math.abs(p.costBasis);
+                const pp = base > 0 ? p.unrealizedPnl / base : null;
                 return (
                   <tr key={p.symbol + i}>
-                    <td><span style={{ color: COLORS[i % 12], marginRight: 5 }}>●</span><strong>{p.symbol}</strong></td>
+                    <td>
+                      <span style={{ color: COLORS[i % 12], marginRight: 5 }}>●</span><strong>{p.symbol}</strong>
+                      {p.position < 0 && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 4, padding: "1px 4px" }}>SHORT</span>}
+                    </td>
                     <td style={{ fontSize: 11 }}><span className="pill pill-b">{p.subCategory || p.assetClass || "—"}</span></td>
                     <td style={{ textAlign: "right" }}>{fmtNum(p.position, 2)}</td>
                     <td style={{ textAlign: "right", fontWeight: 700 }}>{fmtCcy(p.positionValue * p.fxRate, account.currency)}</td>

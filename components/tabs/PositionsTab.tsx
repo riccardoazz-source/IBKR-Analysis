@@ -26,10 +26,24 @@ export default function PositionsTab({ data }: { data: ParsedData }) {
   const totCost = positions.reduce((s, p) => s + p.costBasis * p.fxRate, 0);
   const totVal = positions.reduce((s, p) => s + p.positionValue * p.fxRate, 0);
   const totPnl = positions.reduce((s, p) => s + p.unrealizedPnl * p.fxRate, 0);
+  // Net totals let a short cancel out a long of the same size, which reads as an
+  // empty book. Gross exposure is what the account is actually carrying, so show it
+  // alongside as soon as there is anything short.
+  const totCostAbs = positions.reduce((s, p) => s + Math.abs(p.costBasis * p.fxRate), 0);
+  const grossExposure = positions.reduce((s, p) => s + Math.abs(p.positionValue * p.fxRate), 0);
+  const shortExposure = positions.reduce((s, p) => s + Math.max(0, -(p.positionValue * p.fxRate)), 0);
+  const hasShorts = shortExposure > 0.005;
 
   return (
     <div className="card">
-      <div className="st">{positions.length} positions · {positions[0]?.reportDate ? fmtDate(parseIBDate(positions[0].reportDate)) : "—"}</div>
+      <div className="st">
+        {positions.length} positions · {positions[0]?.reportDate ? fmtDate(parseIBDate(positions[0].reportDate)) : "—"}
+        {hasShorts && (
+          <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 500, color: "#6b7280" }}>
+            gross exposure {fmtCcy(grossExposure, account.currency)} · short {fmtCcy(shortExposure, account.currency)}
+          </span>
+        )}
+      </div>
       <div style={{ overflowX: "auto" }}>
         <table>
           <thead>
@@ -49,10 +63,17 @@ export default function PositionsTab({ data }: { data: ParsedData }) {
           </thead>
           <tbody>
             {sorted.map((p, i) => {
-              const pp = p.costBasis > 0 ? p.unrealizedPnl / p.costBasis : null;
+              // Magnitude: a short's cost basis is negative, and dividing by it
+              // would report a profitable short as a loss.
+              const base = Math.abs(p.costBasis);
+              const pp = base > 0 ? p.unrealizedPnl / base : null;
+              const isShort = p.position < 0;
               return (
                 <tr key={p.symbol + i}>
-                  <td><span style={{ color: COLORS[i % 12], marginRight: 4 }}>●</span><strong>{p.symbol}</strong></td>
+                  <td>
+                    <span style={{ color: COLORS[i % 12], marginRight: 4 }}>●</span><strong>{p.symbol}</strong>
+                    {isShort && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 4, padding: "1px 4px" }}>SHORT</span>}
+                  </td>
                   <td style={{ color: "#9ca3af", fontSize: 11 }}>{p.subCategory}</td>
                   <td style={{ textAlign: "right" }}>{fmtNum(p.position, 2)}</td>
                   <td style={{ textAlign: "right", color: "#9ca3af" }}>{fmtNum(p.openPrice, 4)}</td>
@@ -73,7 +94,7 @@ export default function PositionsTab({ data }: { data: ParsedData }) {
               <td style={{ textAlign: "right" }}>{fmtCcy(totCost, account.currency)}</td>
               <td style={{ textAlign: "right" }}>{fmtCcy(totVal, account.currency)}</td>
               <td style={{ textAlign: "right" }} className={totPnl >= 0 ? "pos" : "neg"}>{fmtCcy(totPnl, account.currency)}</td>
-              <td style={{ textAlign: "right" }} className={totPnl >= 0 ? "pos" : "neg"}>{fmtPct(totCost > 0 ? totPnl / totCost : null)}</td>
+              <td style={{ textAlign: "right" }} className={totPnl >= 0 ? "pos" : "neg"}>{fmtPct(totCostAbs > 0 ? totPnl / totCostAbs : null)}</td>
               <td colSpan={2}></td>
             </tr>
           </tfoot>
